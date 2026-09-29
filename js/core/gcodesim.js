@@ -29,6 +29,9 @@
     'M0', 'M1', 'M17', 'M18', 'M73', 'M82', 'M83', 'M84', 'M104', 'M106', 'M107', 'M109', 'M117',
     'M140', 'M190', 'M204', 'M220', 'M221', 'M400', 'M600', 'M960', 'M975', 'M1002', 'M1006']);
   const TEXT_CMDS = new Set(['M0', 'M1', 'M117', 'M1002', 'M118']);
+  // Known commands whose bare letters are axis flags (G28 X, M84 X Y); in every other known command a
+  // letter needs a value, so `M104 S` or `G1 F` is malformed rather than silently read as 1
+  const FLAG_CMDS = new Set(['G28', 'M17', 'M18', 'M84']);
 
   function parseLine(raw) {
     let s = raw;
@@ -49,8 +52,12 @@
         const t = /^([A-Za-z])(.*)$/.exec(tok);
         if (!t) { bad = 'Bad token "' + tok + '"'; continue; }
         const letter = t[1].toUpperCase();
-        // a bare letter (G28 X) is a flag: stored as true, which numeric checks read as 1
-        if (t[2] === '') { params[letter] = /** @type {any} */ (true); continue; }
+        if (t[2] === '') {
+          if (KNOWN.has(cmd) && !FLAG_CMDS.has(cmd)) { bad = 'Missing value for ' + letter; continue; }
+          // an axis flag (G28 X): stored as true, which numeric checks read as 1
+          params[letter] = /** @type {any} */ (true);
+          continue;
+        }
         if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(t[2])) { bad = 'Bad number "' + tok + '"'; continue; }
         params[letter] = parseFloat(t[2]);
       }

@@ -7,6 +7,19 @@
 
   const U = PP.U, G = PP.Geo, S = PP.Store, OBJ = PP.Objects;
 
+  /** Point strictly inside a convex quad given in either winding order. */
+  function insideQuad(q, x, y) {
+    let sign = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = q[i], b = q[(i + 1) % 4];
+      const c = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]);
+      if (Math.abs(c) < 1e-9) return false;
+      if (sign && Math.sign(c) !== sign) return false;
+      sign = Math.sign(c);
+    }
+    return true;
+  }
+
   const C = {
     bg: '#12151a',
     bed: '#d9dee5',
@@ -217,6 +230,8 @@
         const hw = (b.maxX - b.minX) / 2, hh = (b.maxY - b.minY) / 2;
         const handles = [];
         for (const [hx, hy] of [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]) {
+          // no edge handles across a zero-thickness axis (a straight line): both would sit on its midpoint
+          if ((hx === 0 && hh < 1e-9) || (hy === 0 && hw < 1e-9)) continue;
           const wpt = G.apply(m, cx + hx * hw, cy + hy * hh);
           handles.push({ kind: 'scale', hx, hy, w: wpt, s: this.toScreen(wpt[0], wpt[1]) });
         }
@@ -250,10 +265,21 @@
       const f = this.selectionFrame();
       if (!f) return null;
       if (f.type === 'single' && !S.isEditable(f.obj)) return null;
-      for (const h of f.handles) {
-        if (Math.hypot(h.s[0] - sx, h.s[1] - sy) <= 7) return { frame: f, handle: h };
+      // Handles straddle the frame edge. On a small frame their inner halves would cover the whole body
+      // (a thin line of text could only be squashed, never moved), so inside the frame the hit radius
+      // shrinks to a quarter of the frame's shorter on-screen side.
+      const q = f.corners.map(c => this.toScreen(c[0], c[1]));
+      let radius = 7;
+      if (insideQuad(q, sx, sy)) {
+        const side = Math.min(Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]), Math.hypot(q[2][0] - q[1][0], q[2][1] - q[1][1]));
+        radius = Math.min(7, side / 4);
       }
-      return null;
+      let best = null, bestD = Infinity;
+      for (const h of f.handles) {
+        const d = Math.hypot(h.s[0] - sx, h.s[1] - sy);
+        if (d <= (h.kind === 'rotate' ? 7 : radius) && d < bestD) { best = h; bestD = d; }
+      }
+      return best ? { frame: f, handle: best } : null;
     }
 
     // -------------------------------------------------------------------------

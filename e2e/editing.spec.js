@@ -96,9 +96,9 @@ test('freehand pen, line and polyline tools create paths', async ({ page, consol
 test('select an object, drag it, nudge it with arrow keys and delete it', async ({ page, consoleProblems }) => {
   const target = (await objects(page)).find((o) => o.text === 'Made with a pen plotter');
   expect(target).toBeTruthy();
-  // grab the 4 mm tall line away from its center: there the mid-edge scale handles overlap the text
+  // grab the thin line of text at its center, where its mid-edge scale handles are only a few px away
   const b = target.bbox;
-  const grab = [b.minX + (b.maxX - b.minX) * 0.3, (b.minY + b.maxY) / 2];
+  const grab = [(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2];
   await clickOnBed(page, ...grab);
   expect(await selection(page)).toEqual([target.id]);
   await expect(page.locator('#statusbar .st-sel')).toHaveText('1 selected');
@@ -108,6 +108,8 @@ test('select an object, drag it, nudge it with arrow keys and delete it', async 
   let o = (await objects(page)).find((x) => x.id === target.id);
   near(o.x, target.x + 20);
   near(o.y, target.y + 10);
+  expect(o.scaleX).toBe(target.scaleX); // moved, not squashed by an edge handle
+  expect(o.scaleY).toBe(target.scaleY);
   // the Selection panel follows the drag
   const props = page.locator('#right-panel .sec').first();
   const xField = props.locator('.field', { has: page.locator('label', { hasText: /^X/ }) });
@@ -126,6 +128,37 @@ test('select an object, drag it, nudge it with arrow keys and delete it', async 
   expect(await selection(page)).toEqual([]);
   await expect(page.locator('#statusbar .st-sel')).toHaveText('');
   await expect(page.locator('#right-panel .empty-sel')).toContainText('Nothing selected.');
+  expect(consoleProblems).toEqual([]);
+});
+
+test('a straight line dragged by its middle moves; its end handles still scale it', async ({
+  page,
+  consoleProblems,
+}) => {
+  await page.keyboard.press('l');
+  await dragOnBed(page, [
+    [60, 150],
+    [120, 150],
+  ]);
+  const line = await lastObject(page);
+  expect(line).toMatchObject({ type: 'path', name: 'Line' });
+  await page.keyboard.press('v');
+  await dragOnBed(page, [
+    [90, 150],
+    [100, 160],
+  ]);
+  let o = await lastObject(page);
+  near(o.x, line.x + 10);
+  near(o.y, line.y + 10);
+  expect(o.scaleX).toBe(line.scaleX);
+  expect(o.scaleY).toBe(line.scaleY);
+  // the right end is a corner handle: dragging it outward lengthens the line
+  await dragOnBed(page, [
+    [o.bbox.maxX, o.y],
+    [o.bbox.maxX + 30, o.y],
+  ]);
+  o = await lastObject(page);
+  expect(Math.abs(o.scaleX)).toBeGreaterThan(1.2);
   expect(consoleProblems).toEqual([]);
 });
 
