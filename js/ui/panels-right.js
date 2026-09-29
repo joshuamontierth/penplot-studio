@@ -71,7 +71,7 @@
       if (!sel.length) {
         body.appendChild(h('div', { class: 'empty-sel' },
           h('p', null, 'Nothing selected.'),
-          h('p', { class: 'hint' }, 'Click an object on the bed to edit it, or drag to box-select. Ctrl+A selects everything.')));
+          h('p', { class: 'hint' }, 'Click an object to edit it, or drag to box-select.')));
         sec.classList.add('dim');
         return;
       }
@@ -217,7 +217,7 @@
     host.appendChild(sec);
     const list = h('div', { class: 'layer-list' });
     sec.body.appendChild(list);
-    sec.body.appendChild(h('div', { class: 'hint' }, 'Layers plot top to bottom. Each layer is a pen: the printer pauses between layers so you can swap pens (or export one file per layer).'));
+    sec.body.appendChild(h('div', { class: 'hint' }, 'One layer per pen, plotted top to bottom.'));
     const expanded = new Set();
 
     function render() {
@@ -314,7 +314,7 @@
         UI.btn('Drawable corner', () => S.setPaper({ x: Math.floor(R().minX), y: Math.floor(R().minY) }), { small: true, title: 'Align paper with the front-left corner of the drawable area' }),
         UI.btn('Designer margins', () => { const pr = PP.App.profile(); S.setPaper({ x: U.round(pr.bedWidth - 29 - pa().w, 1), y: U.round(pr.bedDepth - 41 - pa().h, 1) }); }, { small: true, title: 'Mount designer\'s placement for X1/P1: paper 29 mm from the right edge and 41 mm from the back edge' }),
         UI.btn('Center', () => { const r = R(); S.setPaper({ x: U.round((r.minX + r.maxX) / 2 - pa().w / 2, 1), y: U.round((r.minY + r.maxY) / 2 - pa().h / 2, 1) }); }, { small: true })),
-      h('div', { class: 'hint' }, 'Tape the paper down in the same spot on the plate. Paper larger than the bed has to be trimmed.'));
+      h('div', { class: 'hint' }, 'Tape the paper where it is shown on the bed.'));
     S.events.on('change', (k) => {
       if (k !== 'paper' && k !== 'undo' && k !== 'redo' && k !== 'load') return;
       const p = pa();
@@ -336,7 +336,9 @@
     const ds = UI.numberField({ label: 'Draw speed', unit: 'mm/s', value: p.drawSpeed, min: 1, max: 500, step: 1, decimals: 0, onChange: upd('drawSpeed') });
     const ms = UI.numberField({ label: 'Move speed', unit: 'mm/s', value: p.travelSpeed, min: 5, max: 500, step: 5, decimals: 0, onChange: upd('travelSpeed') });
     sec.body.append(h('div', { class: 'grid2' }, zd, zl, ds, ms),
-      h('div', { class: 'hint' }, 'X1C defaults: Z-Draw 14 mm, Z-Lift 20 mm (Instructables). The mount designer uses about Z 17 for a Stabilo - it depends on how far the pen sticks out. Run a calibration test to find yours.'));
+      h('div', { class: 'hint' }, 'Find your Z-Draw with the ',
+        h('a', { href: '#', onclick: (e) => { e.preventDefault(); UI.openCalibration('compact'); } }, 'Z test'), ' (',
+        h('a', { href: '#', onclick: (e) => { e.preventDefault(); UI.openHelp('calibration'); } }, 'guide'), ').'));
     PP.App.events.on('profile', () => {
       const q = PP.App.profile();
       zd.setValue(q.zDraw); zl.setValue(q.zLift); ds.setValue(q.drawSpeed); ms.setValue(q.travelSpeed);
@@ -347,19 +349,12 @@
   // Summary
   // ---------------------------------------------------------------------------
   function buildSummary(host) {
+    // Preview, Download and Calibrate live in the top bar; this section only reports
     const sec = UI.section('Plot summary', null);
     host.appendChild(sec);
     const statsEl = h('div', { class: 'stats' });
     const warnEl = h('div', { class: 'warns' });
-    sec.body.append(statsEl, warnEl,
-      h('div', { class: 'btn-col' },
-        UI.btn('Preview drawing', () => PP.Preview.toggle(), { icon: 'play' }),
-        UI.btn('Download G-code', () => UI.openExport(), { icon: 'download', primary: true })),
-      h('div', { class: 'calib-links' },
-        h('span', null, 'Calibration test G-code:'),
-        h('a', { href: '#', onclick: (e) => { e.preventDefault(); UI.openCalibration('grid'); } }, 'Full'),
-        h('a', { href: '#', onclick: (e) => { e.preventDefault(); UI.openCalibration('compact'); } }, 'Compact'),
-        h('a', { href: '#', onclick: (e) => { e.preventDefault(); UI.openCalibration('frame'); } }, 'Frame')));
+    sec.body.append(statsEl, warnEl);
 
     const stat = (label, value) => h('div', { class: 'stat' }, h('span', null, label), h('b', null, value));
     const compute = U.debounce(() => {
@@ -370,11 +365,9 @@
       U.clear(warnEl);
       statsEl.append(
         stat('Est. time', U.formatDuration(s.time + (plan.jobs.length ? 45 : 0))),
-        stat('Pen-down paths', String(s.lifts)),
+        stat('Pens (layers)', String(plan.jobs.length)),
         stat('Draw length', U.formatLength(s.drawLen)),
-        stat('Travel', U.formatLength(s.travelLen)),
-        stat('Layers to plot', String(plan.jobs.length)),
-        stat('Objects', String(S.project.objects.length)));
+        stat('Pen lifts', String(s.lifts)));
       const warns = [];
       if (!plan.jobs.length) warns.push(['info', 'Nothing to plot yet. Add text, drawings, images or patterns.']);
       if (plan.clipped) warns.push(['warn', 'Some lines are outside the drawable area (shown in red) and will be clipped.']);

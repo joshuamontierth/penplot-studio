@@ -306,22 +306,24 @@
   // ---------------------------------------------------------------------------
   // Calibration
   // ---------------------------------------------------------------------------
-  UI.openCalibration = async function (type = 'grid') {
+  /** type: 'frame' | 'offset' | 'compact' | 'grid'; defaults to the last one used (first time: frame test). */
+  UI.openCalibration = async function (type) {
     const p = PP.App.profile();
-    try { await PP.Fonts.load(PP.Fonts.DEFAULT); } catch (e) { UI.toast('Calibration labels need the Hershey font (internet connection).', 'warn'); }
+    try { await PP.Fonts.load(PP.Fonts.DEFAULT); } catch (e) { UI.toast('Could not load the font for the calibration labels.', 'warn'); }
     // Default range covers both the Instructables (Z 14) and the mount designer (Z 17) contact heights
     const defStart = () => U.round(p.zDraw - 2, 2), defEnd = () => U.round(Math.min(p.zDraw + 3, p.zLift - 1), 2);
     const st = Object.assign({ zStart: defStart(), zEnd: defEnd(), zStep: 1, speeds: '20, 30, 45, 60', cell: 16 }, PP.Storage.getLocal('calib', {}));
     if (st.forZ !== p.zDraw + '/' + p.zLift) { st.zStart = defStart(); st.zEnd = defEnd(); st.zStep = 1; st.forZ = p.zDraw + '/' + p.zLift; }
-    let cur = type;
+    let cur = type || st.type || 'frame';
     let result = null;
     const canvas = h('canvas', { class: 'calib-canvas', width: 640, height: 400 });
     const legend = h('ul', { class: 'tips' });
     const err = h('div', { class: 'warns' });
 
+    // same order as Help → Calibration
     const typeSeg = UI.segmented({
-      options: [{ value: 'grid', label: 'Full: Z × speed' }, { value: 'compact', label: 'Compact: Z only' }, { value: 'frame', label: 'Frame test' }, { value: 'offset', label: 'Offset finder' }],
-      value: cur, onChange: (v) => { cur = v; refresh(); },
+      options: [{ value: 'frame', label: '1 Frame' }, { value: 'offset', label: '2 Offset finder' }, { value: 'compact', label: '3 Z test' }, { value: 'grid', label: 'Z × speed' }],
+      value: cur, onChange: (v) => { cur = v; st.type = v; save(); dryCb.setValue(v === 'frame'); refresh(); },
     });
     const save = () => PP.Storage.setLocal('calib', st);
     const zs = UI.numberField({ label: 'Z from', unit: 'mm', value: st.zStart, step: 0.1, decimals: 2, onChange: (v) => { st.zStart = v; save(); refresh(); } });
@@ -332,7 +334,8 @@
     spIn.addEventListener('change', () => { st.speeds = spIn.value; save(); refresh(); });
     spIn.addEventListener('keydown', (e) => e.stopPropagation());
     const speedField = h('div', { class: 'field' }, h('label', null, 'Speeds (mm/s, comma separated)'), spIn);
-    const dryCb = UI.checkField({ label: 'Dry run (pen stays up)', value: false });
+    // the frame test is meant to be run as a dry run first (no pen), so it starts ticked
+    const dryCb = UI.checkField({ label: 'Dry run (pen stays up)', value: cur === 'frame' });
     const opts = h('div', { class: 'grid2' }, zs, ze, zst, cell);
 
     function zValues() {
@@ -413,48 +416,147 @@
 
     const body = h('div', { class: 'calib' },
       h('div', { class: 'calib-left' }, typeSeg, opts, speedField, dryCb, err, h('h3', null, 'How to read it'), legend),
-      h('div', { class: 'calib-right' }, canvas, h('p', { class: 'hint' }, 'Preview on the bed (gray dot = nozzle for the Offset finder). Tape a sheet of paper under the pattern, run it like any other plot (attach the pen at the pause), then set Z-Draw in Plotter settings to the best cell. Start with the Offset finder if you have not confirmed your pen offset yet.')));
-    UI.modal({ title: 'Calibration test G-code', body, wide: true, footer: [h('span', { class: 'hspacer' }), UI.btn('Download calibration G-code', download, { primary: true, icon: 'download' })] });
+      h('div', { class: 'calib-right' }, canvas, h('p', { class: 'hint' }, 'Preview on the bed; the gray dot is the nozzle for the offset finder. Run the file like any plot: attach the holder at the first pause.')));
+    UI.modal({ title: 'Calibration', body, wide: true, footer: [UI.btn('Calibration guide', () => UI.openHelp('calibration'), { icon: 'help' }), h('span', { class: 'hspacer' }), UI.btn('Download calibration G-code', download, { primary: true, icon: 'download' })] });
     refresh();
   };
 
   // ---------------------------------------------------------------------------
-  // Help
+  // Help (tabs: getting started, calibration, safety, shortcuts)
   // ---------------------------------------------------------------------------
-  UI.openHelp = function () {
-    const step = (n, title, ...content) => h('div', { class: 'help-step' }, h('span', { class: 'num' }, String(n)), h('div', null, h('b', null, title), h('p', null, ...content)));
-    const body = h('div', { class: 'help' },
-      h('p', { class: 'lead' }, 'PenPlot Studio turns your Bambu Lab X1 Carbon into a pen plotter. Design here, download G-code, and plot from the SD card - no firmware changes.'),
-      h('div', { class: 'help-grid' },
-        h('div', null,
-          h('h3', null, 'First plot in 8 steps'),
-          step(1, 'Print & install the pen mount', 'Print the Falu "Head Mount V1 - Series X & P" and fit it in place of the extruder cap. Insert a pen (Stabilo Point 88, Pilot G2, Micron...) so the tip sits about 14 mm below the nozzle.'),
-          step(2, 'Check the printer profile', 'Top bar: "Bambu Lab X1 Carbon" is selected with pen offset X-28 Y-35 (pen left of and in front of the nozzle). Confirm it once with Calibrate → Offset finder. The red striped zone is where the pen cannot reach or the module could collide.'),
-          step(3, 'Design', 'Use the Text, Draw, Image, Patterns and Import tabs. Put each pen color on its own layer.'),
-          step(4, 'Preview', 'Press Preview to watch the pen draw in order, including travel moves.'),
-          step(5, 'Download G-code', 'Copy the .gcode file to the root of the SD card.'),
-          step(6, 'Tape the paper', 'Tape it down where the canvas shows the paper (default: front-left corner). Keep tape away from the plate center where the printer homes.'),
-          step(7, 'Print, pause, attach', 'Start the file from Print files → SD card. After homing, the printer lowers the bed, parks and pauses - clip the pen holder on and press Resume. At the end it pauses again so you can remove the holder.'),
-          step(8, 'Tune', 'Lines too faint? Lower Z-Draw by 0.5 mm. Tearing? Raise it. Use Calibrate for a test sheet.')),
-        h('div', null,
-          h('h3', null, 'Keyboard shortcuts'),
-          h('div', { class: 'kv' },
-            kv('Select / Pan', 'V / H (or hold Space)'), kv('Pen / Line / Polyline / Curve', 'P / L / Y / C'), kv('Rect / Ellipse / Polygon / Star', 'R / E / G / S'),
-            kv('Text / Eraser', 'T / X'), kv('Undo / Redo', 'Ctrl+Z / Ctrl+Shift+Z'), kv('Duplicate / Copy / Paste', 'Ctrl+D / C / V'),
-            kv('Delete', 'Del'), kv('Nudge', 'Arrows (Shift 10 mm, Alt 0.1 mm)'), kv('Zoom / Fit', 'Scroll, + / -, 0'),
-            kv('Save / Open', 'Ctrl+S / Ctrl+O'), kv('Download G-code', 'Ctrl+E'), kv('Preview play/pause', 'Space')),
-          h('h3', null, 'Safety'),
-          h('ul', { class: 'tips' },
-            h('li', null, 'Never attach the pen holder before the pause - the printer probes the plate with the nozzle while homing.'),
-            h('li', null, 'Heaters stay off; the G-code contains no extrusion.'),
-            h('li', null, 'Every file is replayed in a G-code simulator before download - it checks the module safe zone, pen heights, travel lifts and pauses.'),
-            h('li', null, 'Keep the module away from the top glass: if the glass limits the spring travel, remove it or use a riser (mount designer\'s advice).'),
-            h('li', null, 'Do a dry run first when you change offsets, paper position or Z heights.'),
-            h('li', null, 'Watch the first plot and keep a hand near the screen to pause if the pen drags.')),
-          h('h3', null, 'Coordinates'),
-          h('p', { class: 'hint' }, 'Everything on the canvas is in pen coordinates: millimetres from the front-left corner of the plate. The G-code converts them to nozzle positions (nozzle = pen - offset).'),
-          h('h3', null, 'Credits'),
-          h('p', { class: 'hint' }, 'The Hershey Fonts were originally created by Dr. A. V. Hershey while working at the U. S. National Bureau of Standards. The format of the font data was originally created by James Hurt, Cognition, Inc. SVG font versions by Windell H. Oskay (Evil Mad Scientist); font packaging from the hersheytext project. Uploaded fonts are parsed with opentype.js.'))));
-    UI.modal({ title: 'How to plot with your X1C', body, wide: true, footer: [h('span', { class: 'hspacer' }), UI.btn('Calibration test', () => UI.openCalibration(), { icon: 'target' }), UI.btn('Got it', () => UI.closeTopModal(), { primary: true })] });
+  /** Tab bar + panes. defs: [[id, label, build() -> element[]]]. Returns { el, show(id) }. */
+  function tabs(defs, initial) {
+    const bar = h('div', { class: 'mtabs', role: 'tablist' });
+    const bodyEl = h('div', { class: 'mtab-body' });
+    const items = defs.map(([id, label, build]) => {
+      const pane = h('div', { class: 'mtab-pane', role: 'tabpanel' });
+      build().forEach(el => el && pane.appendChild(el));
+      const btn = h('button', { class: 'mtab', role: 'tab', dataset: { tab: id }, onclick: () => show(id) }, label);
+      bar.appendChild(btn); bodyEl.appendChild(pane);
+      return { id, btn, pane };
+    });
+    function show(id) {
+      const it = items.find(x => x.id === id) || items[0];
+      for (const x of items) {
+        const on = x === it;
+        x.btn.classList.toggle('on', on); x.btn.setAttribute('aria-selected', String(on));
+        x.pane.classList.toggle('on', on);
+      }
+      bodyEl.scrollTop = 0;
+    }
+    show(initial);
+    return { el: h('div', { class: 'tabs-wrap' }, bar, bodyEl), show };
+  }
+
+  const step = (n, title, ...content) => h('div', { class: 'help-step' }, h('span', { class: 'num' }, String(n)), h('div', null, h('b', null, title), h('p', null, ...content)));
+  const note = (kind, ...content) => h('div', { class: 'help-note ' + kind }, UI.icon(kind === 'warn' ? 'warn' : 'help', 15), h('div', null, ...content));
+  const calLink = (label, type) => h('a', { href: '#', onclick: (e) => { e.preventDefault(); while (UI.closeTopModal()); UI.openCalibration(type); } }, label);
+
+  function helpStart() {
+    return [
+      h('p', { class: 'lead' }, 'PenPlot Studio turns your Bambu Lab X1 Carbon into a pen plotter. Design here, download G-code and plot from the SD card - no firmware changes.'),
+      step(1, 'Install the pen mount', 'Print the Falu "Head Mount V1 - Series X & P" and fit a pen (Stabilo Point 88, Pilot G2, Micron...). Do not clip the module onto the printer yet - that happens at the first pause.'),
+      step(2, 'Calibrate once', 'Before your first real plot, work through the ', h('b', null, 'Calibration'), ' tab: a dry-run frame test, the offset finder and a Z test. It takes about 15 minutes and settles the pen offset and pen height for your mount.'),
+      step(3, 'Design', 'Use the Text, Draw, Image, Patterns and Import tabs. Each layer is one pen: layers plot top to bottom with a pause to swap pens.'),
+      step(4, 'Preview', 'Preview replays the actual G-code: pen strokes, travel moves and the safety check.'),
+      step(5, 'Download and copy', 'Download the .gcode file and copy it to the root of the SD card (no folders, simple file name).'),
+      step(6, 'Tape the paper', 'Tape it where the canvas shows the paper. Keep tape away from the plate center, where the printer homes.'),
+      step(7, 'Print, attach, plot', 'Start it from Print files → SD card. The printer homes, lowers the bed, parks and pauses: clip the pen holder on, check the pen, press Resume. At the end it pauses once more so you can remove the holder.'),
+      step(8, 'Tune', 'Faint lines: lower Z-Draw by 0.5 mm. Tearing or blobs: raise it. Ghost lines on travel moves: raise Z-Lift.'),
+      h('h3', null, 'Coordinates'),
+      h('p', { class: 'hint' }, 'Everything on the canvas is in pen coordinates: millimetres from the front-left corner of the plate. The G-code converts them to nozzle positions (nozzle = pen - offset). The striped zone is where the pen cannot reach or the module could collide.'),
+    ];
+  }
+
+  function helpCalibration() {
+    const p = PP.App.profile();
+    const f = (v) => U.fmt(v, 2);
+    const R = PP.GCode.reachableRect(p);
+    return [
+      h('p', { class: 'lead' }, 'Calibration answers three questions: will the module clear the printer, where exactly is the pen relative to the nozzle, and at what height does the pen touch the paper? Do the tests in this order - each one uses the result of the one before.'),
+      note('info', 'Every calibration file runs like a normal plot: copy it to the SD card, start it, clip the holder on at the first pause, press Resume. Open ', calLink('Calibrate', 'frame'), ' in the top bar to make the files. Keep the door open and a hand near the screen for the first runs.'),
+
+      h('h3', null, '0. Before you start'),
+      h('ul', { class: 'tips' },
+        h('li', null, 'Printer settings → ', h('b', null, 'Reset to defaults'), ' on your printer profile, then check the values (current: pen offset X', f(p.penOffsetX), ' Y', f(p.penOffsetY), ', nozzle safe zone X ', f(p.nozzleMinX), '-', f(p.nozzleMaxX), ' / Y ', f(p.nozzleMinY), '-', f(p.nozzleMaxY), ', Z-Draw ', f(p.zDraw), ', Z-Lift ', f(p.zLift), ').'),
+        h('li', null, 'Measure how far the pen tip sticks out below the nozzle and note it - it predicts where the pen will touch.'),
+        h('li', null, 'Check the top glass: if it limits the spring travel of the module, remove it or use a riser (mount designer\'s advice).'),
+        h('li', null, 'Tape a sheet of paper over the drawable area (X ', f(R.minX), '-', f(R.maxX), ', Y ', f(R.minY), '-', f(R.maxY), ' mm).')),
+
+      h('h3', null, '1. Frame test as a dry run, no pen (about 3 min)'),
+      h('p', null, 'In ', calLink('Calibrate → Frame test', 'frame'), ', tick ', h('b', null, 'Dry run'), ' and download. At the pause, attach the holder ', h('b', null, 'without a pen'), '. The toolhead traces the outline of the whole drawable area at Z-Lift, then a center cross.'),
+      h('ul', { class: 'tips' },
+        h('li', null, 'Watch the clearance to the door, the front frame and the left wall along the whole outline. If anything comes close, stop and shrink the nozzle limits in Printer settings → Bed & limits.'),
+        h('li', null, 'On Resume, note whether the printer re-homes X/Y with the holder attached, and whether the holder clears the frame when it does.'),
+        h('li', null, 'Check the end: the bed lowers, the printer pauses for you to remove the holder, and after Resume it only moves the toolhead to the back.')),
+
+      h('h3', null, '2. Offset finder (about 5 min)'),
+      h('p', null, 'In ', calLink('Calibrate → Offset finder', 'offset'), ', download and run it with a pen. It pauses three times:'),
+      h('ol', { class: 'tips' },
+        h('li', null, h('b', null, 'Attach'), ' the holder with the pen. The pen draws a 16 mm cross with a small circle while the nozzle sits at a known point.'),
+        h('li', null, h('b', null, 'Remove'), ' the holder. The bare nozzle then moves over the same point and stops 3 mm above the paper.'),
+        h('li', null, h('b', null, 'Measure'), ' from the nozzle tip to the center of the cross: to the right of the nozzle is +X, left is -X, towards the back is +Y, towards the front is -Y.')),
+      h('p', null, 'Enter the two numbers as Pen offset X / Y in Printer settings → Pen mount and save. For the Falu mount expect about X -28, Y -35. If X comes out positive, the pen sits to the right of the nozzle - just enter it.'),
+      note('warn', 'Settle the offset before any full-size plot. The safe zone limits the nozzle, so a wrong offset cannot drive the module into the frame - but the drawing lands off by twice the error (about 56 mm for a wrong X sign) and can run past the edge of the plate. The offset finder itself is safe with either sign: it draws near the middle of the bed.'),
+
+      h('h3', null, '3. Z test - find the pen-down height (about 5 min)'),
+      h('p', null, 'In ', calLink('Calibrate → Z only', 'compact'), ', download with the default range (Z-Draw - 2 to Z-Draw + 3 in 1 mm steps). One cell is drawn per Z value, from the highest Z (lightest pressure) to the lowest, and each is labeled with its Z.'),
+      h('ul', { class: 'tips' },
+        h('li', null, 'Remember: larger Z = bed further from the nozzle = less pressure.'),
+        h('li', null, 'Pick the highest Z that gives a solid, even line and set it as Z-Draw (or 0.5 mm below it for a little more pressure).'),
+        h('li', null, 'Stop the print if the pen starts tearing or the module flexes.'),
+        h('li', null, 'Nothing drew at all? Your pen touches higher than the test range. Raise Z-Draw and Z-Lift in Printer settings (Z-Lift at least 1 mm above Z-Draw) and run it again - the range always follows the current Z-Draw.'),
+        h('li', null, 'For safety the pen never goes more than 4 mm below Z-Draw (and never below half of it), so a test cannot push the pen through the bed.')),
+
+      h('h3', null, '4. Frame test with a pen'),
+      h('p', null, 'Run ', calLink('Calibrate → Frame test', 'frame'), ' again without Dry run. The outline should land on the paper just inside the striped zone on the canvas, and the center cross in the middle of it. This confirms the offsets, the paper position and Z-Draw together.'),
+
+      h('h3', null, '5. Optional: Z × speed grid'),
+      h('p', null, calLink('Calibrate → Z × speed', 'grid'), ' draws the same Z columns at several speeds (rows). Use it to pick the fastest speed that still gives a clean line, then set Draw speed in Plotter settings.'),
+
+      h('h3', null, 'Write down'),
+      h('ul', { class: 'tips' },
+        h('li', null, 'Pen offset X / Y, and the pen and how far it sticks out.'),
+        h('li', null, 'The Z-Draw that works for each pen - set it per layer with the layer\'s settings button when you plot with several pens.'),
+        h('li', null, 'Anything unexpected from the frame test (re-homing on resume, close clearances).')),
+      note('warn', 'Re-run the Z test whenever you change pens or re-seat a pen in the holder, and the frame test after any change to offsets, nozzle limits or paper position.'),
+    ];
+  }
+
+  function helpSafety() {
+    return [
+      h('ul', { class: 'tips' },
+        h('li', null, h('b', null, 'Never attach the pen holder before the first pause.'), ' The printer probes the plate with the nozzle while homing.'),
+        h('li', null, h('b', null, 'Never start a normal 3D print with the module attached'), ' - it can collide when the printer cuts filament.'),
+        h('li', null, 'Heaters stay off and the G-code contains no extrusion.'),
+        h('li', null, 'Every file is replayed in a G-code simulator before download. It checks the module safe zone, pen heights, travel lifts, pauses and the end of the file, and asks before you download a file that fails.'),
+        h('li', null, 'The nozzle safe zone (Printer settings → Bed & limits) keeps the module away from the frame and door. The striped area on the canvas is where the pen cannot go.'),
+        h('li', null, 'Do a dry run whenever you change offsets, nozzle limits, paper position or Z heights.'),
+        h('li', null, 'Watch the first plots with the door open and a hand near the screen, ready to pause.'),
+        h('li', null, 'Keep the module away from the top glass: if the glass limits the spring travel, remove it or use a riser.')),
+      h('h3', null, 'Credits'),
+      h('p', { class: 'hint' }, 'The Hershey Fonts were originally created by Dr. A. V. Hershey while working at the U. S. National Bureau of Standards. The format of the font data was originally created by James Hurt, Cognition, Inc. SVG font versions by Windell H. Oskay (Evil Mad Scientist); font packaging from the hersheytext project. Uploaded fonts are parsed with opentype.js.'),
+    ];
+  }
+
+  function helpShortcuts() {
+    return [h('div', { class: 'kv' },
+      kv('Select / Pan', 'V / H (or hold Space)'), kv('Pen / Line / Polyline / Curve', 'P / L / Y / C'), kv('Rect / Ellipse / Polygon / Star', 'R / E / G / S'),
+      kv('Text / Eraser', 'T / X'), kv('Undo / Redo', 'Ctrl+Z / Ctrl+Shift+Z'), kv('Duplicate / Copy / Paste', 'Ctrl+D / C / V'),
+      kv('Delete', 'Del'), kv('Nudge', 'Arrows (Shift 10 mm, Alt 0.1 mm)'), kv('Zoom / Fit', 'Scroll, + / -, 0'),
+      kv('Save / Open', 'Ctrl+S / Ctrl+O'), kv('Download G-code', 'Ctrl+E'), kv('Preview play/pause', 'Space'),
+      kv('Scale freely / snap rotation', 'Shift while dragging a handle'))];
+  }
+
+  /** tab: 'start' | 'calibration' | 'safety' | 'shortcuts' */
+  UI.openHelp = function (tab = 'start') {
+    const t = tabs([
+      ['start', 'Getting started', helpStart],
+      ['calibration', 'Calibration', helpCalibration],
+      ['safety', 'Safety', helpSafety],
+      ['shortcuts', 'Shortcuts', helpShortcuts],
+    ], tab);
+    const body = h('div', { class: 'help' }, t.el);
+    UI.modal({ title: 'Help', body, width: 'min(880px, calc(100vw - 32px))', footer: [h('span', { class: 'hspacer' }), UI.btn('Open Calibrate', () => { while (UI.closeTopModal()); UI.openCalibration(); }, { icon: 'target' }), UI.btn('Done', () => UI.closeTopModal(), { primary: true })] });
   };
 })(window.PP = window.PP || {});

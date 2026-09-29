@@ -34,8 +34,10 @@ test('boots with the header, tools, panels, canvas and welcome design', async ({
   const types = await page.evaluate(() => PP.Store.project.objects.map((o) => o.type));
   expect(types).toEqual(['shape', 'text', 'text', 'pattern']);
   const summary = page.locator('#right-panel .stat');
-  await expect(summary.filter({ hasText: 'Objects' }).locator('b')).toHaveText('4');
-  await expect(summary.filter({ hasText: 'Layers to plot' }).locator('b')).toHaveText('1');
+  await expect(summary.filter({ hasText: 'Pens (layers)' }).locator('b')).toHaveText('1');
+  await expect(summary.filter({ hasText: 'Pen lifts' }).locator('b')).toHaveText(/^\d+$/);
+  // Preview / Download / Calibrate live only in the top bar
+  await expect(page.locator('#right-panel').getByRole('button', { name: /Download G-code|Preview/ })).toHaveCount(0);
   await expect(page.locator('#right-panel .layer-row .layer-count')).toHaveText('4');
 
   expect(consoleProblems).toEqual([]);
@@ -43,11 +45,23 @@ test('boots with the header, tools, panels, canvas and welcome design', async ({
 
 test('first launch opens the help dialog once', async ({ page, consoleProblems }) => {
   await openApp(page, { skipHelp: false });
-  const help = page.getByRole('dialog').filter({ hasText: 'How to plot with your X1C' });
+  const help = page.getByRole('dialog').filter({ hasText: 'Getting started' });
   await expect(help).toBeVisible();
-  await expect(help.getByText('First plot in 8 steps')).toBeVisible();
+  await expect(help.getByRole('tab', { name: 'Getting started' })).toHaveAttribute('aria-selected', 'true');
+  await expect(help.getByText('Install the pen mount')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('pp.seenHelp'))).toBe('true');
-  await help.getByRole('button', { name: 'Got it' }).click();
+  // the calibration guide lists the tests in order
+  await help.getByRole('tab', { name: 'Calibration' }).click();
+  for (const t of [
+    '0. Before you start',
+    '1. Frame test as a dry run, no pen',
+    '2. Offset finder',
+    '3. Z test',
+    '4. Frame test with a pen',
+  ]) {
+    await expect(help.getByRole('heading', { name: new RegExp('^' + t.replace(/[.()]/g, '\\$&')) })).toBeVisible();
+  }
+  await help.getByRole('button', { name: 'Done' }).click();
   await expect(help).toBeHidden();
 
   // the header help button brings it back; Escape closes it

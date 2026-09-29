@@ -375,7 +375,7 @@
       for (const q of t2) polys.push(q);
       jobs.push({ name: 'Frame test', polys, pauseBefore: false });
       legend.push('Draws the outline of the full reachable area (inset 2 mm), a center cross and the area size.');
-      legend.push('Run it as a dry run first to confirm the pen stays inside the bed, then with the pen to check the offsets.');
+      legend.push('Run it as a dry run first (holder attached, no pen) to check the clearances. Once the offset finder has confirmed your offsets, run it with a pen: the outline should land just inside the striped zone.');
       return { jobs, legend, rect: r };
     }
 

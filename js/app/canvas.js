@@ -26,8 +26,8 @@
     bedEdge: '#9aa3ad',
     gridMinor: 'rgba(40,52,70,0.07)',
     gridMajor: 'rgba(40,52,70,0.16)',
-    blocked: 'rgba(225, 45, 45, 0.13)',
-    blockedStripe: 'rgba(225, 45, 45, 0.22)',
+    blocked: 'rgba(225, 45, 45, 0.06)',
+    blockedStripe: 'rgba(225, 45, 45, 0.16)',
     paper: '#ffffff',
     paperEdge: 'rgba(0,0,0,0.18)',
     reach: 'rgba(16, 185, 129, 0.9)',
@@ -355,15 +355,15 @@
       ctx.fill('evenodd');
       ctx.clip('evenodd');
       ctx.strokeStyle = C.blockedStripe;
-      ctx.lineWidth = 1.2 * px;
+      ctx.lineWidth = px;
       ctx.beginPath();
-      const step = Math.max(4, 10 / z * 3);
+      const step = 14 * px; // hairlines 14 screen px apart at any zoom
       for (let t = -D; t < W + D; t += step) { ctx.moveTo(t, 0); ctx.lineTo(t + D, D); }
       ctx.stroke();
       ctx.restore();
       ctx.save();
-      ctx.setLineDash([6 * px, 4 * px]);
-      ctx.strokeStyle = C.reach; ctx.lineWidth = 1.2 * px;
+      ctx.setLineDash([5 * px, 4 * px]);
+      ctx.strokeStyle = C.reach; ctx.lineWidth = px;
       ctx.strokeRect(R.minX, R.minY, R.maxX - R.minX, R.maxY - R.minY);
       ctx.restore();
 

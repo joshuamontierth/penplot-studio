@@ -308,6 +308,18 @@ textarea.code { font: 12px/1.5 var(--mono); background: var(--bg); resize: verti
 .help-step { display: flex; gap: 10px; margin-bottom: 10px; }
 .help-step .num { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-2); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
 .help-step p { margin: 2px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.45; }
+.help .mtabs { margin-top: 0; }
+.help .mtab-pane { min-height: 0; gap: 0; }
+.help .mtab-body { height: min(62vh, 620px); overflow-y: auto; padding-right: 8px; }
+.help .mtab-pane > p { margin: 0 0 10px; color: var(--text-2); font-size: 12.5px; line-height: 1.55; }
+.help .mtab-pane > .tips { margin-bottom: 10px; }
+.help ol.tips li::marker { color: var(--accent-2); font-weight: 600; }
+.help a, .hint a { color: var(--accent-2); text-decoration: none; }
+.help a:hover, .hint a:hover { text-decoration: underline; }
+.help-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin: 2px 0 12px; border-radius: 8px; background: var(--accent-soft); border: 1px solid rgba(16, 185, 129, 0.25); color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
+.help-note.warn { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); }
+.help-note > svg { flex: none; margin-top: 2px; color: var(--accent-2); }
+.help-note.warn > svg { color: var(--warn); }
 
 /* ---------- toasts & drop mask ---------- */
 .toasts { position: fixed; top: 62px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 100; pointer-events: none; max-width: 420px; }

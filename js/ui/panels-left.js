@@ -172,7 +172,7 @@
       if (o && o.fill) fillSp.setValue(o.fill.spacing);
       fillBox.style.display = fillCb.input.checked ? '' : 'none';
       addBtn.querySelector('span:last-child').textContent = o ? 'Add as new text' : 'Add text to bed';
-      status.textContent = o ? 'Editing the selected text object - changes apply live.' : 'Set the text and style, then click "Add text to bed" or use the Text tool (T) to click where it should go.';
+      status.textContent = o ? 'Editing the selected text object - changes apply live.' : 'Add it to the bed below, or press T and click where it should go.';
       drawPreview();
     }
 

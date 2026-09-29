@@ -137,25 +137,29 @@ test('preview plays the simulated G-code, scrubs, steps and exits', async ({ pag
   expect(consoleProblems).toEqual([]);
 });
 
-test('calibration offset finder downloads a file that simulates OK with 3 pauses', async ({
+test('calibration: frame dry run and offset finder download simulator-clean files', async ({
   page,
   consoleProblems,
 }) => {
   await page.getByRole('button', { name: 'Calibrate', exact: true }).click();
-  const dlg = dialog(page, 'Calibration test G-code');
+  const dlg = dialog(page, 'Calibration');
   await expect(dlg).toBeVisible();
-  await expect(dlg.locator('.seg-btn.on')).toHaveText('Full: Z × speed');
+  // first time: the frame test, ticked as a dry run
+  await expect(dlg.locator('.seg-btn.on')).toHaveText('1 Frame');
+  await expect(dlg.getByRole('checkbox', { name: 'Dry run (pen stays up)' })).toBeChecked();
 
-  // the default Z x speed grid also passes its own check
   const trigger = dlg.getByRole('button', { name: 'Download calibration G-code' });
-  const grid = await download(page, trigger);
-  expect(grid.name).toBe('calibration_grid.gcode');
-  await expect(page.locator('.toast', { hasText: 'Saved calibration_grid.gcode' })).toContainText(
+  const frame = await download(page, trigger);
+  expect(frame.name).toBe('calibration_frame_DRYRUN.gcode');
+  await expect(page.locator('.toast', { hasText: 'Saved calibration_frame_DRYRUN.gcode' })).toContainText(
     'safety check passed',
   );
+  const frameSim = await simulate(page, frame.text, { dryRun: true });
+  expect(frameSim.errors).toEqual([]);
+  expect(frameSim.strokes).toBe(0);
 
   await dlg.locator('.seg-btn', { hasText: 'Offset finder' }).click();
-  await expect(dlg.locator('.seg-btn.on')).toHaveText('Offset finder');
+  await expect(dlg.locator('.seg-btn.on')).toHaveText('2 Offset finder');
   await expect(dlg.locator('.tips li').first()).toBeVisible();
   const file = await download(page, trigger);
   expect(file.name).toBe('calibration_offset.gcode');
@@ -170,5 +174,14 @@ test('calibration offset finder downloads a file that simulates OK with 3 pauses
   expect(sim.ok).toBe(true);
   expect(sim.pauses).toBe(3); // attach, remove the holder, measure
   expect(sim.strokes).toBeGreaterThan(0);
+
+  // the guide opens on top at the Calibration tab; the dialog remembers the last test
+  await dlg.getByRole('button', { name: 'Calibration guide' }).click();
+  const help = page.getByRole('dialog').filter({ hasText: 'Getting started' });
+  await expect(help.getByRole('tab', { name: 'Calibration' })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Calibrate', exact: true }).click();
+  await expect(dialog(page, 'Calibration').locator('.seg-btn.on')).toHaveText('2 Offset finder');
   expect(consoleProblems).toEqual([]);
 });
