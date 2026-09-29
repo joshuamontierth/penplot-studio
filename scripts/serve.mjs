@@ -54,7 +54,7 @@ const LIVE_CLIENT = `<script>(function () {
   };
 })();</script>`;
 
-export function parseArgs(argv) {
+function parseArgs(argv) {
   const opts = { port: 8791, open: true, live: false, host: '127.0.0.1' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -83,7 +83,7 @@ function resolvePath(urlPath) {
   return file;
 }
 
-export function startServer({ port = 8791, host = '127.0.0.1', live = false } = {}) {
+function startServer({ port = 8791, host = '127.0.0.1', live = false } = {}) {
   const clients = new Set();
 
   const server = createServer((req, res) => {
@@ -199,4 +199,4 @@ async function main() {
   if (opts.open) setTimeout(() => openBrowser(url), 300);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+main();
