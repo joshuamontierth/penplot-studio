@@ -1,0 +1,8 @@
+{
+  // Prettier only touches files not listed in .prettierignore (app code in js/ keeps its own style)
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "prettier.requireConfig": true,
+  "files.eol": "\n",
+  "search.exclude": { "vendor/": true, "package-lock.json": true }
+}
