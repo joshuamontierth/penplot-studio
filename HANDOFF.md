@@ -82,9 +82,14 @@ project up. Read sections 1–3 before touching printer-related code._
 | A10 | `M73 P<pct> R<min>` shows progress on the X1C screen | High | Used in Bambu files | Visual |
 | A11 | 200 mm/s travel and 4000 mm/s² acceleration don't shake the clipped-on holder loose | Unknown | — | First plot; lower in settings if needed |
 
-**If A1 is wrong:** the drawing lands 56 mm off in X. It is still **not a crash risk**: the safe zone is enforced on
-**nozzle** coordinates regardless of the offset, and the pen still stays over the plate. You'd just need to flip the
-sign in Printer settings.
+**If A1 is wrong:** the drawing lands 56 mm off in X. The module still can't hit the frame, because the safe zone is
+enforced on **nozzle** coordinates regardless of the offset. But the pen does **not** stay over the plate. With a true
+offset of +28, actual pen X = design X + 56, so anything drawn right of about X 200 comes down past the plate's right
+edge, and the pen can catch the edge. That's why the calibration order (Help → Calibration) is:
+1. the frame test as a dry run, with no pen;
+2. the Offset finder, which draws at the bed centre and is safe with either sign;
+3. the Z test;
+4. only then the frame test with a pen.
 
 ### 3.3 Drawable area (X1C defaults)
 
