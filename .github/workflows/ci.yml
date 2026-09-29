@@ -1,0 +1,74 @@
+# Lint, type-check, unit tests (Vitest + seeded fuzz) and browser tests (Playwright) on Linux and
+# Windows. Pushes and PRs run a quick fuzz sample; the nightly schedule runs a deep one.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 7 * * *' # nightly deep fuzz (07:17 UTC)
+  workflow_dispatch:
+    inputs:
+      fuzz_n:
+        description: Fuzz scenarios (Vitest and browser suite)
+        default: '200'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # push/PR: quick sample; nightly: deep run; manual: whatever was asked for
+  FUZZ_N: ${{ github.event_name == 'schedule' && '2000' || inputs.fuzz_n || '30' }}
+  BROWSER_FUZZ_N: ${{ github.event_name == 'schedule' && '500' || inputs.fuzz_n || '60' }}
+
+jobs:
+  checks:
+    name: Checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+
+  e2e:
+    name: Browser tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          FUZZ_N: ${{ env.BROWSER_FUZZ_N }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: playwright-report/
+          retention-days: 14
