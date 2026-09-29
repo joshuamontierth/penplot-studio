@@ -1,0 +1,298 @@
+// Editing with real mouse and keyboard input: drawing tools, selection and transforms, undo/redo,
+// text, patterns and SVG drag & drop. Bed coordinates are mm in pen space (Y up, 0,0 = front-left).
+/* global PP */
+import { test, expect } from './fixtures.js';
+import { clickOnBed, dragOnBed, lastObject, objectCount, objects, openApp, selection, toClient } from './helpers.js';
+
+const near = (actual, expected, tol = 0.5) =>
+  expect(Math.abs(actual - expected), `${actual} ≈ ${expected}`).toBeLessThanOrEqual(tol);
+
+test.beforeEach(async ({ page }) => {
+  await openApp(page);
+});
+
+test('rectangle tool from the tool strip draws a rect by dragging', async ({ page, consoleProblems }) => {
+  await page.locator('#toolstrip .tool-btn[data-tool="rect"]').click();
+  await expect(page.locator('#toolstrip .tool-btn.on')).toHaveAttribute('data-tool', 'rect');
+  await expect(page.locator('#statusbar .st-hint')).toContainText('Shift = square');
+
+  await dragOnBed(page, [
+    [40, 180],
+    [80, 200],
+  ]);
+  expect(await objectCount(page)).toBe(5);
+  const o = await lastObject(page);
+  expect(o).toMatchObject({ type: 'shape', shape: 'rect', name: 'Rect' });
+  near(o.w, 40);
+  near(o.h, 20);
+  near(o.x, 60);
+  near(o.y, 190);
+  expect(await selection(page)).toEqual([o.id]);
+  await expect(page.locator('#statusbar .st-sel')).toHaveText('1 selected');
+  await expect(page.locator('#right-panel .type-badge')).toHaveText('Rect');
+  expect(consoleProblems).toEqual([]);
+});
+
+test('ellipse, polygon and star tools draw shapes via keyboard shortcuts', async ({ page, consoleProblems }) => {
+  const cases = [
+    ['e', 'ellipse'],
+    ['g', 'polygon'],
+    ['s', 'star'],
+  ];
+  for (const [i, [key, shape]] of cases.entries()) {
+    await page.keyboard.press(key);
+    await expect(page.locator('#toolstrip .tool-btn.on')).toHaveAttribute('data-tool', shape);
+    const y = 60 + i * 40;
+    await dragOnBed(page, [
+      [150, y],
+      [180, y + 24],
+    ]);
+    const o = await lastObject(page);
+    expect(o).toMatchObject({ type: 'shape', shape });
+    near(o.w, 30);
+    near(o.h, 24);
+    expect(o.worldPolys).toBe(1);
+  }
+  expect(await objectCount(page)).toBe(4 + cases.length);
+  // a click without a drag does not create a zero-size shape
+  await clickOnBed(page, 60, 60);
+  expect(await objectCount(page)).toBe(4 + cases.length);
+  expect(consoleProblems).toEqual([]);
+});
+
+test('freehand pen, line and polyline tools create paths', async ({ page, consoleProblems }) => {
+  await page.keyboard.press('p');
+  const stroke = [];
+  for (let i = 0; i <= 12; i++) stroke.push([40 + i * 4, 190 + 6 * Math.sin(i / 2)]);
+  await dragOnBed(page, stroke, { steps: 3 });
+  let o = await lastObject(page);
+  expect(o).toMatchObject({ type: 'path', name: 'Freehand' });
+  expect(o.paths).toHaveLength(1);
+  expect(o.paths[0]).toBeGreaterThanOrEqual(8);
+  near(o.bbox.minX, 40, 1);
+  near(o.bbox.maxX, 88, 1);
+
+  await page.keyboard.press('l');
+  await dragOnBed(page, [
+    [120, 60],
+    [160, 90],
+  ]);
+  o = await lastObject(page);
+  expect(o).toMatchObject({ type: 'path', name: 'Line', paths: [4] });
+  near(o.bbox.maxX - o.bbox.minX, 40);
+  near(o.bbox.maxY - o.bbox.minY, 30);
+
+  await page.keyboard.press('y');
+  await clickOnBed(page, 60, 60);
+  await clickOnBed(page, 80, 80);
+  const end = await toClient(page, 100, 60);
+  await page.mouse.dblclick(end.x, end.y); // double-click finishes the polyline
+  o = await lastObject(page);
+  expect(o).toMatchObject({ type: 'path', name: 'Polyline', paths: [6] });
+  expect(await objectCount(page)).toBe(7);
+  expect(consoleProblems).toEqual([]);
+});
+
+test('select an object, drag it, nudge it with arrow keys and delete it', async ({ page, consoleProblems }) => {
+  const target = (await objects(page)).find((o) => o.text === 'Made with a pen plotter');
+  expect(target).toBeTruthy();
+  // grab the 4 mm tall line away from its center: there the mid-edge scale handles overlap the text
+  const b = target.bbox;
+  const grab = [b.minX + (b.maxX - b.minX) * 0.3, (b.minY + b.maxY) / 2];
+  await clickOnBed(page, ...grab);
+  expect(await selection(page)).toEqual([target.id]);
+  await expect(page.locator('#statusbar .st-sel')).toHaveText('1 selected');
+  await expect(page.locator('#right-panel .type-badge')).toHaveText('Text');
+
+  await dragOnBed(page, [grab, [grab[0] + 20, grab[1] + 10]]);
+  let o = (await objects(page)).find((x) => x.id === target.id);
+  near(o.x, target.x + 20);
+  near(o.y, target.y + 10);
+  // the Selection panel follows the drag
+  const props = page.locator('#right-panel .sec').first();
+  const xField = props.locator('.field', { has: page.locator('label', { hasText: /^X/ }) });
+  await expect.poll(async () => parseFloat(await xField.locator('input').inputValue())).toBeCloseTo(o.x, 1);
+
+  const before = o;
+  await page.keyboard.press('ArrowRight'); // +1 mm
+  await page.keyboard.press('Shift+ArrowUp'); // +10 mm
+  await page.keyboard.press('Alt+ArrowLeft'); // -0.1 mm
+  o = (await objects(page)).find((x) => x.id === target.id);
+  expect(o.x).toBeCloseTo(before.x + 0.9, 6);
+  expect(o.y).toBeCloseTo(before.y + 10, 6);
+
+  await page.keyboard.press('Delete');
+  expect(await objectCount(page)).toBe(3);
+  expect(await selection(page)).toEqual([]);
+  await expect(page.locator('#statusbar .st-sel')).toHaveText('');
+  await expect(page.locator('#right-panel .empty-sel')).toContainText('Nothing selected.');
+  expect(consoleProblems).toEqual([]);
+});
+
+test('undo and redo restore object counts and positions', async ({ page, consoleProblems }) => {
+  const undoBtn = page.getByRole('button', { name: 'Undo (Ctrl+Z)' });
+  const redoBtn = page.getByRole('button', { name: 'Redo (Ctrl+Shift+Z)' });
+  await expect(undoBtn).toBeDisabled();
+  await expect(redoBtn).toBeDisabled();
+
+  await page.keyboard.press('r');
+  await dragOnBed(page, [
+    [40, 184],
+    [56, 200],
+  ]);
+  expect(await objectCount(page)).toBe(5);
+  await expect(undoBtn).toBeEnabled();
+
+  await page.keyboard.press('Control+z');
+  expect(await objectCount(page)).toBe(4);
+  await expect(redoBtn).toBeEnabled();
+  await page.keyboard.press('Control+y');
+  expect(await objectCount(page)).toBe(5);
+  await page.keyboard.press('Control+z');
+  expect(await objectCount(page)).toBe(4);
+  await page.keyboard.press('Control+Shift+z');
+  expect(await objectCount(page)).toBe(5);
+  await undoBtn.click();
+  expect(await objectCount(page)).toBe(4);
+  await redoBtn.click();
+  expect(await objectCount(page)).toBe(5);
+  await expect(redoBtn).toBeDisabled();
+
+  // a drag is one undo step (small unfilled shapes are picked from inside)
+  const rect = await lastObject(page);
+  await page.keyboard.press('v');
+  await dragOnBed(page, [
+    [rect.x, rect.y],
+    [rect.x + 30, rect.y - 20],
+  ]);
+  let moved = await lastObject(page);
+  near(moved.x, rect.x + 30);
+  near(moved.y, rect.y - 20);
+  await page.keyboard.press('Control+z');
+  moved = await lastObject(page);
+  expect(moved.x).toBe(rect.x);
+  expect(moved.y).toBe(rect.y);
+  expect(await objectCount(page)).toBe(5);
+
+  // undo back to the welcome design; the stack is then empty
+  await page.keyboard.press('Control+z');
+  expect(await objectCount(page)).toBe(4);
+  await expect(undoBtn).toBeDisabled();
+  expect(consoleProblems).toEqual([]);
+});
+
+test('text tool places text that the Text panel edits live', async ({ page, consoleProblems }) => {
+  await page.keyboard.press('t');
+  await clickOnBed(page, 70, 196);
+  const o = await lastObject(page);
+  expect(o).toMatchObject({ type: 'text', text: 'Hello!', font: 'h:scripts' });
+  near(o.x, 70);
+  near(o.y, 196);
+  // the tool hands over to the Text panel with the text selected for typing
+  await expect(page.locator('#toolstrip .tool-btn.on')).toHaveAttribute('data-tool', 'select');
+  const pane = page.locator('#left-panel .tab-pane.on');
+  await expect(page.locator('#left-panel .tab.on')).toHaveText('Text');
+  const ta = pane.locator('textarea.text-input');
+  await expect(ta).toBeFocused();
+  await expect(pane).toContainText('Editing the selected text object');
+  await page.keyboard.type('Pen plot');
+
+  const store = (key) => page.evaluate((k) => PP.Store.get(PP.Store.selection[0])[k], key);
+  await expect.poll(() => store('text')).toBe('Pen plot');
+  await pane.locator('select').selectOption('h:timesr');
+  await expect.poll(() => store('font')).toBe('h:timesr');
+  const size = pane
+    .locator('.field', { has: page.locator('label', { hasText: 'Letter height' }) })
+    .locator('input.num');
+  await size.fill('20');
+  await size.press('Enter');
+  await expect.poll(() => store('size')).toBe(20);
+
+  // the new font loads and the text gets geometry; still one object, still selected
+  await expect.poll(async () => (await lastObject(page)).worldPolys).toBeGreaterThan(0);
+  expect(await page.evaluate(() => PP.Fonts.get('h:timesr').loaded)).toBe(true);
+  expect(await objectCount(page)).toBe(5);
+  expect(await selection(page)).toEqual([o.id]);
+  expect(consoleProblems).toEqual([]);
+});
+
+test('Text panel adds new text with the chosen text and font', async ({ page, consoleProblems }) => {
+  const pane = page.locator('#left-panel .tab-pane.on');
+  const addBtn = pane.getByRole('button', { name: 'Add text to bed' });
+  await pane.locator('textarea.text-input').fill('Panel text');
+  await pane.locator('select').selectOption('h:futural');
+  await addBtn.click();
+
+  const o = await lastObject(page);
+  expect(o).toMatchObject({ type: 'text', text: 'Panel text', font: 'h:futural', size: 12 });
+  const c = await page.evaluate(() => PP.App.placementCenter());
+  near(o.x, c.x, 1e-6);
+  near(o.y, c.y, 1e-6);
+  expect(o.worldPolys).toBeGreaterThan(0);
+  expect(await selection(page)).toEqual([o.id]);
+  await expect(pane.getByRole('button', { name: 'Add as new text' })).toBeVisible();
+  expect(consoleProblems).toEqual([]);
+});
+
+test('Patterns tab adds a configured pattern and edits it live', async ({ page, consoleProblems }) => {
+  await page.locator('#left-panel .tab', { hasText: 'Patterns' }).click();
+  const pane = page.locator('#left-panel .tab-pane.on');
+  await pane.locator('.chip', { hasText: 'Curves' }).click();
+  await expect(pane.locator('.pattern-card')).toHaveCount(6);
+  await pane.locator('.pattern-card', { hasText: 'Rose Curve' }).click();
+  await expect(pane.locator('.pattern-title')).toHaveText('Rose Curve');
+  const param = (label) =>
+    pane.locator('.field', { has: page.locator('label', { hasText: label }) }).locator('input.num');
+  await param('Numerator n').fill('7');
+  await param('Numerator n').press('Enter');
+  await pane.getByRole('button', { name: 'Add pattern to bed' }).click();
+
+  let o = await lastObject(page);
+  expect(o).toMatchObject({ type: 'pattern', generator: 'rose', name: 'Rose Curve' });
+  expect(o.params.n).toBe(7);
+  expect(o.worldPolys).toBeGreaterThan(0);
+  expect(await selection(page)).toEqual([o.id]);
+  await expect(pane.getByRole('button', { name: 'Add a copy to bed' })).toBeVisible();
+
+  // with the pattern selected, parameter changes apply to it
+  await param('Layers').fill('3');
+  await param('Layers').press('Enter');
+  await expect.poll(async () => (await lastObject(page)).params.layers).toBe(3);
+  o = await lastObject(page);
+  expect(o.params.n).toBe(7);
+  expect(await objectCount(page)).toBe(5);
+  expect(consoleProblems).toEqual([]);
+});
+
+test('dropping an SVG file onto the canvas imports its paths', async ({ page, consoleProblems }) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="60mm" height="40mm" viewBox="0 0 60 40">
+    <path d="M5 5 L55 5 L55 35 Z" fill="none" stroke="#000000"/>
+    <circle cx="30" cy="20" r="10" fill="none" stroke="#ff0000"/>
+  </svg>`;
+  const dt = await page.evaluateHandle((text) => {
+    const d = new DataTransfer();
+    d.items.add(new File([text], 'drop-test.svg', { type: 'image/svg+xml' }));
+    return d;
+  }, svg);
+  const canvas = page.locator('canvas.bed-canvas');
+  await canvas.dispatchEvent('dragenter', { dataTransfer: dt });
+  await expect(page.locator('.drop-mask')).toBeVisible();
+  await canvas.dispatchEvent('drop', { dataTransfer: dt });
+  await expect(page.locator('.drop-mask')).toBeHidden();
+  await expect(page.locator('.toast', { hasText: 'Imported drop-test.svg' })).toBeVisible();
+
+  // two stroke colors -> two new layers (multi-pen import is on by default), one path object each
+  await expect.poll(() => objectCount(page)).toBe(6);
+  const added = (await objects(page)).slice(4);
+  expect(added.map((o) => o.name)).toEqual(['drop-test (#000000)', 'drop-test (#ff0000)']);
+  for (const o of added) expect(o).toMatchObject({ type: 'path', paths: [expect.any(Number)] });
+  const layers = await page.evaluate(() => PP.Store.project.layers.map((l) => [l.id, l.color]));
+  expect(layers).toHaveLength(3);
+  expect(added.map((o) => layers.find(([id]) => id === o.layerId)[1])).toEqual(['#000000', '#ff0000']);
+  // imported at 1:1 scale (60 x 40 mm document fits on the paper)
+  near(added[0].bbox.maxX - added[0].bbox.minX, 50, 0.05);
+  near(added[1].bbox.maxX - added[1].bbox.minX, 20, 0.1);
+  await expect(page.locator('#right-panel .layer-row')).toHaveCount(3);
+  expect(await page.evaluate(() => document.querySelectorAll('.modal-back').length)).toBe(0);
+  expect(consoleProblems).toEqual([]);
+});
