@@ -278,9 +278,14 @@ describe('parseTransform', () => {
     expect(S.parseTransform('matrix(1 2 3)')).toEqual([1, 0, 0, 1, 0, 0]);
   });
 
-  // Expected: a sign also separates numbers (browsers read translate(10-5) as 10, -5); actual: [1,0,0,1,10,0].
-  it.fails('splits numbers on a minus sign without whitespace', () => {
+  it('splits numbers on a sign without whitespace, like browsers (translate(10-5) = 10, -5)', () => {
     expect(S.parseTransform('translate(10-5)')).toEqual([1, 0, 0, 1, 10, -5]);
+    expect(S.parseTransform('matrix(1 0 0 1-2.5.5)')).toEqual([1, 0, 0, 1, -2.5, 0.5]);
+  });
+
+  it('treats scale() and a matrix with bad numbers as identity', () => {
+    expect(S.parseTransform('scale()')).toEqual(G.IDENTITY);
+    expect(S.parseTransform('matrix(1,0,0,1,NaN,0)')).toEqual(G.IDENTITY);
   });
 });
 
@@ -401,15 +406,31 @@ describe('importSVG', () => {
     expect(() => S.importSVG('<html xmlns="http://www.w3.org/1999/xhtml"/>')).toThrow(/Not an SVG/);
   });
 
-  // Expected: polyline points follow the SVG number grammar, so "10-5" is the pair (10, -5); actual: dropped.
-  it.fails('splits polyline points on a minus sign without whitespace', () => {
+  it('splits polyline points on a minus sign without whitespace', () => {
     expectPolys(polysOf(S.importSVG(doc('<polyline points="0,0 10-5"/>'))), [[0, 0, 10, 5]]);
   });
 
-  // Expected: a circular <use> reference is ignored like browsers do; actual: the path is emitted 32 times.
-  it.fails('draws a self-referencing group only once', () => {
-    const r = S.importSVG(doc('<g id="loop"><path d="M0 0 L10 0"/><use href="#loop" y="1"/></g>'));
+  it('draws a self-referencing group only once (circular <use> is ignored, like browsers)', () => {
+    const r = S.importSVG(doc('<g id="loop"><path d="M0 0 L10 0"/><use href="#loop" y="1"/><use href="#loop"/></g>'));
     expect(polysOf(r)).toHaveLength(1);
+  });
+
+  it('terminates on mutually recursive <use> references', () => {
+    const body =
+      '<defs><g id="a"><path d="M0 0 L1 0"/><use href="#b"/></g><g id="b"><path d="M0 1 L1 1"/><use href="#a"/></g></defs>' +
+      '<use href="#a"/>';
+    // a, then b inside it; the reference back to a is circular and skipped
+    expect(polysOf(S.importSVG(doc(body)))).toHaveLength(2);
+  });
+
+  it('stops a runaway <use> fan-out at the element budget with a warning', () => {
+    // 20 levels that each use the next level twice = 2^20 leaf paths without the budget
+    let body = '<defs><path id="l20" d="M0 0 L1 0"/>';
+    for (let i = 19; i >= 0; i--) body += `<g id="l${i}"><use href="#l${i + 1}"/><use href="#l${i + 1}"/></g>`;
+    body += '</defs><use href="#l0"/>';
+    const r = S.importSVG(doc(body));
+    expect(r.warnings.join(' ')).toMatch(/too complex/);
+    expect(polysOf(r).length).toBeLessThan(200000);
   });
 });
 

@@ -244,18 +244,24 @@
     }
   }
 
+  /** Numbers in an SVG number list: separators may be whitespace, commas or just a sign ("10-5" = 10, -5). */
+  const NUM_RE = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
+  function numberList(str) {
+    return (String(str || '').match(NUM_RE) || []).map(parseFloat).filter(isFinite);
+  }
+
   function parseTransform(str) {
     let m = G.IDENTITY.slice();
     if (!str) return m;
     const re = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
     let r;
     while ((r = re.exec(str))) {
-      const a = r[2].split(/[\s,]+/).filter(Boolean).map(parseFloat);
+      const a = numberList(r[2]);
       let t = G.IDENTITY;
       switch (r[1]) {
         case 'matrix': if (a.length >= 6) t = a.slice(0, 6); break;
         case 'translate': t = [1, 0, 0, 1, a[0] || 0, a[1] || 0]; break;
-        case 'scale': t = [a[0], 0, 0, a.length > 1 ? a[1] : a[0], 0, 0]; break;
+        case 'scale': if (a.length) t = [a[0], 0, 0, a.length > 1 ? a[1] : a[0], 0, 0]; break;
         case 'rotate': {
           const ang = (a[0] || 0) * Math.PI / 180, cs = Math.cos(ang), sn = Math.sin(ang);
           const rot = [cs, sn, -sn, cs, 0, 0];
@@ -345,8 +351,15 @@
 
     const num = (el, a, def = 0) => { const v = parseFloat(el.getAttribute(a)); return isFinite(v) ? v : def; };
 
+    // <use> targets being expanded right now (cycle guard) and a total element budget, so neither a
+    // circular reference nor a deeply nested fan-out of <use> elements can hang the page
+    const expanding = new Set();
+    const MAX_ELEMENTS = 200000;
+    let visited = 0;
+
     function walk(el, m, inh, depth) {
       if (depth > 64) return;
+      if (++visited > MAX_ELEMENTS) { warnings.add('The SVG is too complex: import stopped after ' + MAX_ELEMENTS.toLocaleString() + ' elements.'); return; }
       const tag = el.nodeName.toLowerCase().replace(/^svg:/, '');
       if (SKIP.has(tag)) return;
       const st = Object.assign({}, inh, parseStyle(el));
@@ -378,11 +391,15 @@
           const href = el.getAttribute('href') || el.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
           if (!href || href[0] !== '#') return;
           const target = doc.querySelector('[id="' + href.slice(1).replace(/"/g, '') + '"]');
-          if (!target) return;
+          // a reference to an ancestor or to an element already being expanded is circular: browsers
+          // don't render it, so skip it
+          if (!target || target.contains(el) || expanding.has(target)) return;
           const UM = G.matMul(M, [1, 0, 0, 1, num(el, 'x'), num(el, 'y')]);
           const ttag = target.nodeName.toLowerCase();
+          expanding.add(target);
           if (ttag === 'symbol') { for (const ch of target.children) walk(ch, UM, st, depth + 1); }
           else walk(target, UM, st, depth + 1);
+          expanding.delete(target);
           return;
         }
         case 'path':
@@ -393,7 +410,7 @@
           return;
         case 'polyline':
         case 'polygon': {
-          const pts = (el.getAttribute('points') || '').split(/[\s,]+/).filter(Boolean).map(parseFloat).filter(isFinite);
+          const pts = numberList(el.getAttribute('points'));
           if (pts.length < 4) return;
           if (pts.length % 2) pts.pop();
           if (tag === 'polygon') pts.push(pts[0], pts[1]);
