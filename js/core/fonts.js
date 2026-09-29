@@ -1,9 +1,9 @@
 /*
  * PenPlot Studio - fonts and text layout.
- *  - Hershey single-stroke fonts (JSON) and EMS/Hershey SVG fonts, loaded from the
- *    hersheytext npm package via jsDelivr.
+ *  - Hershey single-stroke fonts (JSON) and EMS/Hershey SVG fonts from the hersheytext
+ *    npm package: the local copy in vendor/ first (works offline), then jsDelivr.
  *  - "My Handwriting": a stroke font the user draws themselves (stored locally).
- *  - Custom TTF/OTF uploads (outline fonts) via opentype.js.
+ *  - Custom TTF/OTF uploads (outline fonts) via opentype.js (vendor/ first, then cdnjs).
  * All glyphs are normalised so that cap height = 1, baseline at y = 0, Y up.
  *
  * The Hershey Fonts were originally created by Dr. A. V. Hershey while working at the
@@ -15,8 +15,14 @@
   'use strict';
 
   const U = PP.U, G = PP.Geo;
-  const CDN = 'https://cdn.jsdelivr.net/npm/hersheytext@2.0.0/';
-  const OPENTYPE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js';
+  // vendor/ is resolved against this script's URL so pages in subfolders (tests/) find it too.
+  // file:// pages cannot fetch() local files, so they go straight to the CDN (scripts still load locally).
+  const APP_ROOT = (function () {
+    try { return new URL('../../', document.currentScript.src).href; } catch (e) { return ''; }
+  })();
+  const LOCAL_FETCH = typeof location === 'undefined' || location.protocol !== 'file:';
+  const HERSHEY_BASES = [LOCAL_FETCH && APP_ROOT + 'vendor/hersheytext/', 'https://cdn.jsdelivr.net/npm/hersheytext@2.0.0/'].filter(Boolean);
+  const OPENTYPE_URLS = [APP_ROOT + 'vendor/opentype/opentype.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js'];
   const HAND_KEY = 'pp.handwriting.v1';
   const LINE_HEIGHT = 1.75; // in cap-height units
   const FALLBACK_FONT = 'h:futural';
@@ -88,13 +94,23 @@
   // ---------------------------------------------------------------------------
   // Loaders
   // ---------------------------------------------------------------------------
+  /** Fetch `path` from the first base URL that serves it (local vendor/ copy, then CDN). */
+  async function fetchFirst(bases, path, as) {
+    let err = null;
+    for (const base of bases) {
+      try {
+        const r = await fetch(base + path);
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + base + path);
+        return await (as === 'json' ? r.json() : r.text());
+      } catch (e) { err = e; }
+    }
+    throw err;
+  }
+
   let hjsonPromise = null;
   function loadHersheyJSON() {
     if (!hjsonPromise) {
-      hjsonPromise = fetch(CDN + 'hersheytext.min.json').then(r => {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }).catch(e => { hjsonPromise = null; throw e; });
+      hjsonPromise = fetchFirst(HERSHEY_BASES, 'hersheytext.min.json', 'json').catch(e => { hjsonPromise = null; throw e; });
     }
     return hjsonPromise;
   }
@@ -137,9 +153,7 @@
   }
 
   async function loadSVGFont(f) {
-    const r = await fetch(CDN + 'svg_fonts/' + f.source.file + '.svg');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const text = await r.text();
+    const text = await fetchFirst(HERSHEY_BASES, 'svg_fonts/' + f.source.file + '.svg', 'text');
     const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
     const fontEl = doc.querySelector('font');
     const face = doc.querySelector('font-face');
@@ -190,7 +204,10 @@
   let otPromise = null;
   function loadOpenType() {
     if (window.opentype) return Promise.resolve(window.opentype);
-    if (!otPromise) otPromise = U.loadScript(OPENTYPE_URL).then(() => window.opentype).catch(e => { otPromise = null; throw e; });
+    if (!otPromise) {
+      otPromise = OPENTYPE_URLS.reduce((p, url) => p.catch(() => U.loadScript(url)), Promise.reject(new Error('no source')))
+        .then(() => window.opentype).catch(e => { otPromise = null; throw e; });
+    }
     return otPromise;
   }
 
