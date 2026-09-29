@@ -1,0 +1,17 @@
+# Normalize line endings: LF in the repo and working tree on every OS,
+# except Windows batch files, which cmd.exe expects to be CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary

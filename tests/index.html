@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PenPlot Tests</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 20px; background: #0e1115; color: #e6e9ee; font: 13px/1.45 system-ui, sans-serif; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    .bar { display: flex; gap: 10px; align-items: center; margin: 10px 0 16px; flex-wrap: wrap; }
+    button { background: #10b981; color: #04241a; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 600; cursor: pointer; }
+    input { background: #151920; color: inherit; border: 1px solid #333b47; border-radius: 6px; padding: 5px 8px; width: 80px; }
+    #summary { font-weight: 600; }
+    .pass { color: #34d399; } .fail { color: #f87171; } .info { color: #93c5fd; }
+    #log { font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; background: #151920; border: 1px solid #272e38; border-radius: 8px; padding: 12px; max-height: 70vh; overflow: auto; }
+    canvas { background: #fff; border-radius: 8px; margin-top: 12px; max-width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>PenPlot Studio - pipeline &amp; G-code simulation tests</h1>
+  <div>Builds designs with the real app code, generates G-code, replays every file in the G-code simulator and checks the drawn lines against the design.</div>
+  <div class="bar">
+    <button id="run">Run all tests</button>
+    <label>Fuzz scenarios <input id="n" type="number" value="150"></label>
+    <label>Seed <input id="seed" type="number" value="1"></label>
+    <span id="summary"></span>
+  </div>
+  <div id="log"></div>
+  <canvas id="view" width="900" height="900"></canvas>
+
+  <script src="../js/core/util.js"></script>
+  <script src="../js/core/geometry.js"></script>
+  <script src="../js/core/svg.js"></script>
+  <script src="../js/core/storage.js"></script>
+  <script src="../js/core/fonts.js"></script>
+  <script src="../js/core/optimizer.js"></script>
+  <script src="../js/core/gcode.js"></script>
+  <script src="../js/core/gcodesim.js"></script>
+  <script src="../js/core/patterns.js"></script>
+  <script src="../js/core/imagetrace.js"></script>
+  <script src="../js/app/state.js"></script>
+  <script src="../js/app/objects.js"></script>
+  <script src="../js/ui/ui-core.js"></script>
+  <script src="../js/app/app.js"></script>
+  <script>PP.Store.autosaveEnabled = false;</script>
+  <script src="tests.js"></script>
+</body>
+</html>

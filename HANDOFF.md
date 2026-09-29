@@ -1,0 +1,458 @@
+# PenPlot Studio — Engineering Handoff
+
+_Written 2026-09-29 at the end of the first build session. It's meant to let someone (a person or an agent) pick
+this project up on a machine with full dev tools. Read sections 1–3 before touching printer-related code._
+
+---
+
+## 0. TL;DR
+
+- **What it is:** a static, no-build web app that turns designs (text, drawings, images, patterns, SVG) into
+  pen-plotter G-code for a **Bambu Lab X1 Carbon** with the Falu pen mount. It's modelled on 3dplotter.xyz.
+- **Software state:** feature-complete for v1. Every file is replayed in a built-in **G-code simulator** before download.
+  There's a browser test suite (`tests/`) with a simulator self-test, edge cases, full font, pattern and trace coverage,
+  and randomized fuzzing (see §7 for the latest results).
+- **Hardware state:** **never run on the real printer.** Several physical facts are *inferred* (§3). The most
+  important unknown is the **sign of the pen X offset**. The default is now −28 (pen left of the nozzle), which
+  contradicts the Instructables wording. The app has an **Offset finder** calibration to settle it in about 5 minutes.
+- **Next steps:** (1) put the project under git; (2) run the first physical checks in §9; (3) set up Node, Vitest
+  and Playwright and move the tests into CI (§10).
+
+---
+
+## 1. How to run
+
+| Purpose | Command / action |
+|---|---|
+| Use the app | Double-click `index.html` (Chrome/Edge), or `python serve.py`, which serves http://127.0.0.1:8791 with no caching and opens a browser |
+| Run tests | `python serve.py`, then open http://127.0.0.1:8791/tests/ → **Run all tests** (200 fuzz scenarios ≈ 3–5 min). Programmatic: `await window.runPenPlotTests()` returns `{pass, fail, failures, stats}` |
+| Replay one fuzz case | On the tests page: `await replayScenario(<seed>)` returns `{P, prefs, plan, res, sim, mismatch}` |
+| Windows shortcut | `Start PenPlot Studio.bat` runs serve.py, or opens index.html directly if Python is missing |
+
+- **Build step:** none. Everything is classic `<script>` tags in dependency order (see `index.html`), and every module
+  attaches to `window.PP`.
+- **Runtime network needs:** Hershey fonts come from `cdn.jsdelivr.net/npm/hersheytext@2.0.0/…`, and opentype.js from
+  cdnjs (it's only loaded when a TTF/OTF is uploaded).
+- **Note:** port 8765 on the original machine is used by an unrelated local wiki server. The app uses **8791**.
+
+---
+
+## 2. Sources and what they say
+
+| Source | Key facts used |
+|---|---|
+| **Instructables** "Turn Your Bambu Lab X1 Carbon Into a Pen Plotter in 45 Minutes" (by the 3dplotter.xyz founder). This is what the user followed to build the mount | "Pen offset coordinates (28mm right, 35mm forward)"; bed 256×256; usable ≈ 221 × 228; **Z-Draw 14 / Z-Lift 20** for Stabilo; pause with **`M400 U1`** after startup, attach the holder, press Resume; align paper with the **front-left corner**; copy .gcode to the SD root |
+| **MakerWorld 2029113** "Modular System For A1, P1, & X1 Series" (UMTS), by the mount designer **Falu**. The user flagged it as possibly outdated | **Excluded area** for X1/P1 (slicer bed coordinates = nozzle): `(0x0, 258x0, 258x55, 48x55, 48x258, 0x258)`, which excludes the front 55 mm and left 48 mm. Paper: **29 mm from the right wall, 41 mm from the rear wall**. Usable width deliberately = **210 mm (A4)**. Z-offset **+17.0 mm (Stabilo)**, +20.0 (POSCA). Fans off. Travel Z-hop 3 mm. **Never let the job finish with the module installed** (it collides when it tries to cut filament). Watch the **top glass** limiting the spring. Workflow is slicer-based, with fake-filament tricks and pause layers |
+| **Bambu forum** (X1 G-code threads, "XY homing when paused") | `M400 U1` = pause and wait for Resume. The pause may move the toolhead (wipe/park at the chute) and may **home XY on resume**. **`G4` reportedly did not work on the X1** (early report), so Bambu uses `M400 P<ms>` / `M400 S<s>` for dwell |
+| **Bambu official X1 start G-code** (quoted in Falu's page and a gist) | "Reset machine status" preamble: `G91 / M17 Z0.4 / G380 S2 Z30 F300 / G380 S2 Z-25 F300 / G1 Z5 F300 / G90 / M17 X1.2 Y1.2 Z0.75`. It drops the bed before homing so the nozzle can't be below the plate |
+
+---
+
+## 3. Physical model and assumptions (what is known vs guessed)
+
+### 3.1 Coordinates
+
+- All design geometry is in **pen coordinates**: mm from the **front-left corner of the plate**, with +X to the
+  right and +Y toward the back. Bambu's origin is at the front-left, and Y = 0 is the front.
+- The printer moves the **nozzle**. The pen tip is at `pen = nozzle + offset`, so the G-code emits
+  `nozzle = pen − offset`.
+- Z is the nozzle height above the plate (the X1C moves the **bed**; a larger Z means the bed is lower). After `G28`,
+  Z = 0 is the nozzle touching the plate center.
+
+### 3.2 Assumption table
+
+| # | Assumption (current default) | Confidence | Evidence | How to verify |
+|---|---|---|---|---|
+| A1 | **Pen offset X = −28** (pen is **left** of the nozzle) | Medium | Falu's collision zone is on the **left** (module sticks out left). The paper must be **29 mm in from the right** edge, so the pen can't reach the right 29 mm. Instructables: paper at the **front-left** corner means the reachable area starts at the left. **Against:** Instructables says "28mm right" (it may describe the direction of the correction, not where the pen is) | **Calibrate → Offset finder**, or just look at the mount |
+| A2 | **Pen offset Y = −35** (pen **in front** of the nozzle) | Medium-high | Instructables "35mm forward"; Falu's excluded front strip. Falu's 41 mm rear paper margin suggests about −41 (possibly with extra margin) | Offset finder |
+| A3 | **Nozzle safe zone X 48–256, Y 55–256** while the holder is attached | High (the designer states it) | Falu's excluded area. The polygon uses 258; we use 256 (the X1C plate size) | Frame test as a dry run, then with the pen; watch clearances to the door/front frame and left wall |
+| A4 | Z-Draw 14, Z-Lift 20 | Low-medium | Instructables says 14/20; Falu says Z-offset about 17 for a Stabilo. It depends on how far the pen sticks out and on the spring | Compact calibration (default Z 12…17 in 1 mm steps, highest Z drawn first) |
+| A5 | `M400 U1` pauses and resumes cleanly; the firmware may re-home XY on resume | Medium | Forum reports | Watch the first attach pause; note any XY homing with the holder attached (collision risk, §9.3) |
+| A6 | `M400 P50` dwell works on the X1C | High | Bambu's own end G-code uses `M400 P100` | Visual |
+| A7 | Plain `.gcode` from the SD root prints from the screen ("Print files → SD card") | High | Instructables + forum | First run |
+| A8 | The `G380` safe-start preamble (copied from Bambu's start G-code) is harmless on the X1C/P1 | High | It's in the official X1 start G-code | First run (the bed drops about 10 mm before homing) |
+| A9 | After a plain-gcode job ends, the firmware makes **no extra moves** (no filament cut) | Unknown | Falu's warning is about slicer end G-code | We add an **end pause** ("remove the pen holder"), so it's safe either way |
+| A10 | `M73 P<pct> R<min>` shows progress on the X1C screen | High | Used in Bambu files | Visual |
+| A11 | 200 mm/s travel and 4000 mm/s² acceleration don't shake the clipped-on holder loose | Unknown | — | First plot; lower in settings if needed |
+
+**If A1 is wrong:** the drawing lands 56 mm off in X. It is still **not a crash risk**: the safe zone is enforced on
+**nozzle** coordinates regardless of the offset, and the pen still stays over the plate. You'd just need to flip the
+sign in Printer settings.
+
+### 3.3 Drawable area (X1C defaults)
+
+The pen can reach X 20–228 and Y 20–221. Minus the 1 mm margin, that's **X 21–227 × Y 21–220 (≈ 206 × 199 mm)**.
+The canvas shows everything else striped red.
+
+---
+
+## 4. Architecture
+
+### 4.1 Load order and modules (all on `window.PP`)
+
+| File | Namespace | Responsibility |
+|---|---|---|
+| `js/core/util.js` | `PP.U` | DOM builder `h()`, formatting (`fmt` = trimmed fixed decimals for G-code), downloads, file pick/read, `mulberry32`, `Emitter` |
+| `js/core/geometry.js` | `PP.Geo` | Polylines as **flat arrays `[x0,y0,x1,y1,…]`, Y-up, mm**. bbox (skips non-finite), affine `[a,b,c,d,e,f]`, RDP simplify, dedupe, Chaikin, Catmull-Rom, resample, shapes, hit tests, even-odd point-in-polygon, Liang–Barsky clipping, circle eraser, even-odd **hatch fill** |
+| `js/core/svg.js` | `PP.SVG` | Path-data parser (all commands, arcs → center form), adaptive flattening, SVG document import (units/viewBox, transforms, `<use>`, grouped by color), SVG export |
+| `js/core/storage.js` | `PP.Storage` | IndexedDB key/value (`penplot-studio`/`kv`) with a localStorage fallback. `getLocal`/`setLocal` for small prefs (`pp.*`) |
+| `js/core/fonts.js` | `PP.Fonts` | Hershey JSON (23 fonts, one fetch), EMS/Hershey SVG fonts (18), "My Handwriting" (localStorage `pp.handwriting.v1`), uploaded TTF/OTF via opentype.js (persisted in IndexedDB). Normalized so cap height = 1 and the baseline is y = 0. `layout(text, fontId, {size, letterSpacing, lineSpacing, align, arc})` |
+| `js/core/optimizer.js` | `PP.Optimizer` | `prepare` (split at NaN, dedupe, **clip, then simplify**, min-length), `order` (grid nearest-neighbor with reversal, then `join` within tolerance; it keeps the joined start point), `estimate` (trapezoid + junction-deviation time model) |
+| `js/core/gcode.js` | `PP.GCode` | Profiles, `reachableRect`, `validateProfile`, `minSafeDrawZ`/`safeDrawZ`, **`build(jobs, profile, opts)`**, `calibrationJobs`, **`offsetFinder`** |
+| `js/core/gcodesim.js` | `PP.GSim` | **G-code simulator/safety checker**: `simulate(text, profile, opts)`, `check(text, profile, jobs, opts)`, `expectedPauses`, `summary`, `fmtMsg` |
+| `js/core/patterns.js` | `PP.Patterns` | 23 generators (written by a subagent; tested in Electron-as-Node plus our suite). `list`, `get`, `defaults`, `generate(id, params)` (clamps params, catches errors, caps at 400k points). `PP.Patterns.util` exposes its helpers |
+| `js/core/imagetrace.js` | `PP.ImageTrace` | 8 raster modes (written by a subagent). `toGray(imageData, pre)`, `trace(gray, mode, params, {mmPerPx})` → polylines in **pixel coordinates, Y down** |
+| `js/app/state.js` | `PP.Store` | Project `{name, layers[], objects[], activeLayerId, paper}`, selection, **snapshot undo/redo** (objects are immutable, so snapshots are reference arrays), autosave (debounced; `S.autosaveEnabled=false` in tests), serialize/load |
+| `js/app/objects.js` | `PP.Objects` | Object types `path / text / shape / pattern`, each with a transform `x, y, rotation, scaleX, scaleY` (TRS) and local geometry **centered on (0,0)**. Hatch `fill`. Caches: path WeakMap, param-key LRU, world WeakMap with a font **epoch** |
+| `js/ui/ui-core.js` | `PP.UI` | Icons, toasts, modal, confirm, form controls, generic `paramForm` |
+| `js/app/canvas.js` | `PP.View` | Canvas renderer (bed, grid, paper, red zone, objects, out-of-reach highlighting in red, selection handles), pan/zoom, **tools** (select/move/scale/rotate, pan, pen, line, polyline, curve, rect, ellipse, polygon, star, text, eraser) |
+| `js/app/preview.js` | `PP.Preview` | Animated preview. It now builds the real G-code, **simulates it**, and animates the simulator's strokes and travels, with a safety badge. It falls back to the plan if simulation fails |
+| `js/app/app.js` | `PP.App` | Profiles (built-ins + per-builtin overrides + custom, in localStorage `pp.profiles`), prefs, **`buildPlan({profile?, prefs?, layerIds?})`**, placement, object ops, file I/O, header/toolbar/statusbar, keyboard shortcuts, drag & drop, boot |
+| `js/ui/panels-left.js` | | Tabs: Text, Draw, Image, Patterns, Import (+ examples, welcome design) |
+| `js/ui/panels-right.js` | | Selection properties, Layers/pens (Z/speed overrides clamped), Plotter quick settings, Plot summary, Paper (includes a "Designer margins" preset) |
+| `js/ui/modals.js` | | Printer settings (tabs), **Export** (runs the simulator per file and asks for confirmation on failure), **Calibration** (grid/compact/frame/offset finder), Help |
+| `js/ui/imagedialog.js`, `js/ui/handwriting.js` | | Image trace dialog; handwriting glyph editor |
+
+### 4.2 Pipeline: design to G-code
+
+```
+objects ──OBJ.world()──► world polylines (pen coords, includes hatch fill)
+   per visible layer (array order = plot order)
+      └─ Optimizer.prepare: split NaN → dedupe → clip to reachableRect → simplify(tol) → drop < minLength
+      └─ Optimizer.order: NN + reverse, then join(joinTol)
+   ⇒ plan.jobs[] = {name, color, polys, zDraw?, drawSpeed?}
+GCode.build(jobs, profile, {dryRun}) ⇒ text
+GSim.check(text, profile, jobs) ⇒ {ok, errors, warnings, strokes, travels, pauses, stats}
+```
+
+### 4.3 Profile fields (`GCode.FIELD_DEFAULTS`, X1C values)
+
+| Field | Value | Notes |
+|---|---|---|
+| `firmware` | `bambu` | `bambu` / `marlin` (dwell command, fan commands, safe start) |
+| `bedWidth`, `bedDepth` | 256, 256 | |
+| `nozzleMinX/MaxX/MinY/MaxY` | 48, 256, 55, 256 | **Safe zone** while the holder is attached |
+| `penOffsetX/Y` | −28, −35 | A1/A2 |
+| `margin` | 1 | |
+| `zDraw`, `zLift`, `zAttach`, `zEnd`, `zMax` | 14, 20, 60, 80, 250 | |
+| `drawSpeed`, `travelSpeed`, `zSpeed` | 30, 200, 15 mm/s | |
+| `accel` | 4000 | `M204 S`. 0 = don't send |
+| `penDownDelay`, `penUpDelay` | 50, 0 ms | `M400 P` (Bambu) or `G4 P` (Marlin) |
+| `home`, `safeStart`, `pauseForAttach`, `layerPause`, `endPause`, `progress`, `heatersOff` | all true | |
+| `pauseCommand` | `M400 U1` | Marlin: `M0 …` |
+| `parkX/Y` | 152, 70 | Nozzle position for all pauses |
+| `endX/Y` | 152, 250 | |
+| `startGcode`, `endGcode` | '' | Inserted before homing / at the end |
+
+Built-ins: `bambu-x1c`, `bambu-x1e`, `bambu-p1s` (same geometry) and `custom` (generic Marlin 220³, offsets 0, no
+safe start or end pause). User edits to built-ins are stored as overrides, and **Reset to defaults** removes them.
+**Caveat:** a browser that saved overrides *before* this session keeps its old values, including +28 and nozzle
+min 0. Any real user browser was fresh, but check the **Printer settings** once.
+
+### 4.4 Safety rules in the generator
+
+- Pen-down Z is clamped to `[minSafeDrawZ, zLift − 0.5]`, where `minSafeDrawZ = max(zDraw − 4, zDraw/2, 0.5)`.
+  Out-of-range values come back as a warning.
+- `validateProfile` requires Z-Lift ≥ Z-Draw + 1, park and end inside the safe zone, and the park position's pen over
+  the plate.
+- The end sequence lowers the bed to `max(zLift, zEnd, zAttach if endPause)`. This fixed a bug where the end pause
+  could happen at too low a Z.
+- The writer skips moves that **round** to the same G-code coordinates, so the simulator and the file agree point for point.
+
+### 4.5 Simulator checks (`gcodesim.js`; errors, plus warnings marked "(w)")
+
+| Group | Codes |
+|---|---|
+| Config | `lift-clearance`, `draw-above-lift` |
+| Parsing | `parse`, `bad-number` (NaN/undefined/infinity/null), `unknown` (w) |
+| Homing / probing | `not-homed`, `home-attached`, `home-pen-down`, `probe-attached`, `home-no-pause` (w), `g380` (w) |
+| Motion limits | `xy-limit` (safe zone, holder attached), `xy-range` (outside the printer), `z-max`, `z-crash` (Z < 0.3), `z-too-low` (< minSafeDrawZ, holder attached), `z-low` (w), `z-fast` (w), `travel-fast` (w), `draw-fast` (w) |
+| Pen behavior | `scrape` (XY with Z < 1), `diagonal` (XY + Z together while low), `z-while-down`, `odd-draw-z`, `draw-out` (outside the drawable area), `holder-out` (pen off the plate while attached), `dry-draw`, `dry-strokes` |
+| Pauses | `pause-pen-down`, `pause-clearance` (Z < zAttach), `pause-pos` (outside the safe zone), `no-attach-pause`, `pause-count` |
+| End | `end-pen-down`, `end-low`, `end-not-lowered` (w), `end-attached` (w) |
+| Machine state | `heater`, `bed-heater`, `wait-heat` (w), `extrude`, `g92`, `inches`, `relative` (w), `steppers-off`, `feed`, `no-feed`, `g4-bambu` (w), `long-dwell` (w), `speed-factor` (w), `accel` (w), `progress` (w) |
+| Fidelity | `stroke-count`, `draw-length` (only when `check()` is given the jobs) |
+
+**Holder state machine:** detached at the start (when `pauseForAttach`). A pause **attaches** it, unless the comment
+just before says "remove the pen holder" (then it's **removed**) or "measure" while detached (then it's **inspect**).
+Pen logic only applies while attached. **Limitation:** this intent comes from the generator's comments, so custom
+pause commands in user start/end G-code may be misread.
+
+---
+
+## 5. G-code produced (Bambu profile, annotated)
+
+```
+; header comments + ; HEADER_BLOCK_START … model printing time … ; HEADER_BLOCK_END
+M73 P0 R<min>
+G90 / G21 / M83
+M104 S0 / M140 S0                      ; heaters off (no heat needed)
+M106 S0 / M106 P2 S0 / M106 P3 S0      ; fans off (Falu: fans move the paper)
+M220 S100 / M204 S4000
+[custom start G-code]
+G91 / M17 Z0.4 / G380 S2 Z30 F300 / G380 S2 Z-25 F300 / G1 Z5 F300 / G90 / M17 X1.2 Y1.2 Z0.75   ; safeStart
+G28                                     ; holder NOT attached
+G90 / G1 Z60 F900 / G1 X152 Y70 F12000 / M400
+; PAUSE: attach the pen holder …
+M400 U1
+G90 / G1 Z20 F900
+; ===== Layer i/n: name (color) =====     ; the simulator reads this for layer colors
+  [pen change: G1 Z60 / park / M400 / ; PAUSE: change to the pen … / M400 U1 / G90 / G1 Z20]
+  G1 X Y F12000 / G1 Z<zd> F900 ; pen down / M400 P50 / G1 X Y F1800 … / G1 Z20 F900 ; pen up / M73 P R
+; ===== End =====
+G1 Z80 / G1 X152 Y70 / M400 / ; PAUSE: remove the pen holder now … / M400 U1 / G90
+G1 X152 Y250 / M400 / [custom end] / M73 P100 R0
+```
+
+The **Offset finder** (`GCode.offsetFinder`) runs its own sequence: attach, then draw a cross and circle with the
+nozzle at the safe-zone center (152, 155.5). Next it **removes** the holder, parks the bare nozzle 3 mm above the same
+point, and **pauses so you can measure**. It ends with the bed down and the toolhead at the end position.
+
+---
+
+## 6. UI notes
+
+- **Tools and shortcuts:** V select, H pan, P pen, L line, Y polyline, C curve, R rect, E ellipse, G polygon, S star,
+  T text, X eraser. Ctrl+Z/Y undo/redo, Ctrl+D/C/V duplicate/copy/paste, Del delete, arrows nudge,
+  Ctrl+S/O save/open, Ctrl+E export, 0/+/− zoom.
+- **Scale handles:** corner handles keep proportions and Shift frees them. Shift snaps rotation to 15°.
+- **Layer order** is plot order, and each layer is one pen.
+- **Hit testing:** unfilled shapes larger than 25 mm are picked by their outline only.
+- **Welcome design:** added on first launch when there's no autosave.
+- **First-launch help:** opens once (`pp.seenHelp`).
+
+---
+
+## 7. Testing status
+
+### 7.1 Suite contents (`tests/tests.js`)
+
+1. **Simulator self-test.** It takes a valid file and applies 20 mutations; each must raise the expected code:
+   - missing attach pause, missing pen lift, pen pushed into the bed, nozzle into the excluded zone, holder off the plate
+   - hotend on, extrusion, NaN, undefined, homing with the pen attached, diagonal pen-down, file ends with the pen down
+   - pause without clearance, no feed rate, end pause without clearance, G20, G92, Z below the plate, M84 mid-plot,
+     XY scrape after homing
+
+   Two config-level checks run as well.
+2. **Edge cases:** empty design, a single dot, an object fully outside the area, a frame bigger than the bed,
+   NaN/Infinity in path data, 1e9 coordinates, zero scale, 30,000 strokes (≈1.1 s end to end, 3.2 MB of G-code),
+   out-of-range layer overrides (clamped, 4 pauses), no reordering, a large join tolerance, and every built-in profile.
+3. **Coverage:** all 41 fonts render all ASCII characters. Every pattern is run at default, min and max params
+   (geometry checked, pipeline run at default and min). All 8 trace modes are run. Calibration grid, compact and frame
+   run on every profile (Z window checked). The Offset finder runs on every profile, and its pause sequence must be
+   `attach, remove, inspect`.
+4. **Fuzz** (seeded). Each scenario draws:
+   - a random profile: 45% X1C, 7% P1S, 8% Custom, 40% randomized valid profiles with random offsets (±45), safe
+     zones, Z values, speeds, dwell and pause flags, and both firmware types;
+   - random prefs;
+   - 1–3 layers with random overrides (some out of range) and hidden layers;
+   - 1–5 random objects (text in random fonts with arcs, shapes, patterns with random params, random paths including
+     dots and NaN, SVG samples including broken ones, image traces), with random transforms (positions −60…320,
+     scale 0.05–2.5, mirroring, rotation) and random hatch fills.
+
+   Each scenario then checks: plan inside the area; no invalid numbers; **simulation passes**; the **G-code draws
+   exactly the plan** (ordered point alignment within the 0.001 mm rounding); **coverage** (every design point inside
+   the area gets drawn, within the simplify tolerance); **precision** (nothing drawn off-design); dry run; and one
+   file per layer.
+5. **Editor state fuzz:** 400 random operations (add, update, remove, undo/redo, mirror, rotate, align, fit,
+   convert to path, combine, duplicate, copy/paste, erase, layer add/remove/move/visibility, move to layer,
+   serialize→load, paper). Invariants: no orphaned objects, no dangling selection, at least one layer, no exceptions.
+   The final design then goes through the pipeline.
+
+### 7.2 Results so far (this session)
+
+- **Run 1 (60 scenarios)** surfaced bugs, all fixed:
+  - the end pause could happen below the attach height;
+  - calibration could press to Z 0 on low-Z profiles (added `minSafeDrawZ`);
+  - `join()` dropped the first point of a joined path (up to `joinTol` off the design);
+  - one Infinity in a path corrupted the whole object (`bbox` now skips non-finite values);
+  - the writer could emit moves that round to the same coordinates;
+  - several test-side mistakes.
+- **Run 2 (150 scenarios):** 1741 passed, 3 failed. All 3 were a flaw in the test's stroke comparison at the rounding
+  threshold; the comparison is now an ordered alignment.
+- **Run 3 (200 scenarios):** **2110 passed, 1 failed**, then the final state-fuzz check was far too slow. The failure
+  was 2 samples drawn 0.07–0.10 mm off the design exactly on the drawable-area border. Cause: simplify ran before clip.
+  Fixed in `prepare()` (clip first, then simplify), and verified by replaying seed 100164 (see §7.3). The slow check
+  was the test's fidelity index on a km-scale design, now skipped above 120 m of line.
+- **Run 4 (200 scenarios):** 2122 passed, 1 failed. The failure was in the design left after the state fuzz: a
+  0.0004 mm back-and-forth in the plan rounds to a single G-code point, and the test's greedy matcher attached it to
+  the wrong neighbor. The G-code was correct. The matcher now prefers the closer neighbor.
+- **Run 5 (final, 200 scenarios, seed 1): 2123 passed, 0 failed.** See "Session end status" below.
+
+### 7.3 Final verification in this session
+
+See the bottom of this file ("Session end status"). It records the last replay and full-run results as they were
+when the session ended.
+
+### 7.4 Known test-harness quirks
+
+- In a *hidden* browser tab, `setTimeout` is throttled, so the runner yields through `MessageChannel`. Long synchronous
+  sections still block the tab, so poll with `localStorage['pp.testTrace']` / `['pp.testSummary']` from another tab
+  on the same origin.
+- Fidelity is skipped for designs over 120 m of line and logged. The simulator and exact-plan checks still run.
+
+---
+
+## 8. Known issues and limitations
+
+1. **Not hardware-validated** (§3). The first physical session is the top priority.
+2. **Offset sign contradiction** (A1). The default is −28. The Help, Settings, README and memory notes say to verify it.
+3. **XY homing on resume** (A5) happens with the holder attached, if the firmware does it. It's unknown whether the
+   holder clears the frame during sensorless XY homing, and the simulator can't model firmware behavior. Watch the
+   first resume.
+4. **Holder state inference** in the simulator relies on the generator's comment text (§4.5).
+5. **The time estimate** ignores firmware look-ahead details and pause time; expect ±20%.
+6. **No `.gcode.3mf` export.** Bambu's format needs about 544 project-settings keys and MD5 metadata
+   (see github.com/estampo/bambox). Files go by SD card, or by FTPS upload to the printer (port 990, user `bblp`,
+   the LAN access code) and are started from the screen.
+7. **Fonts need internet** (CDN). There's no offline vendoring yet.
+8. **Image tracing runs on the main thread**, so 1600 px images can stutter the UI. Move it to a Web Worker.
+9. **The preview** renders completed strokes by appending to a `Path2D`; scrubbing backwards rebuilds it. That's fine up
+   to about 100k strokes.
+10. **Undo during live edits:** slider drags are one undo step (via `liveEdit`), but typing in the text box is one
+    step per focus session.
+11. **Very large designs** (km of line) work, but they're slow and produce huge files. There's no warning yet
+    ("this will take 30 hours").
+12. **`file://` mode** hasn't been verified in a real browser: the built-in pane only renders snapshots. It should work
+    because it uses classic scripts and CORS-enabled CDNs. `serve.py` is the fallback.
+13. **A browser with old saved profile overrides** keeps +28 and nozzle min 0 (§4.3). Consider a one-time migration
+    that flags overrides older than profile schema v2.
+
+---
+
+## 9. First physical session: checklist and what to record
+
+Record every answer. They settle the assumptions in §3.
+
+### 9.1 Prep
+
+1. In **Printer settings**, click **Reset to defaults** on the X1C profile, then confirm offset −28/−35, safe zone
+   48–256 / 55–256, Z 14/20.
+2. Check the pen: how many mm does the tip stick out below the nozzle level? Record it (this predicts Z contact).
+3. Check the top glass against the spring travel, per Falu. Remove the glass or use a riser if needed.
+
+### 9.2 Dry runs (no pen)
+
+1. **Calibrate → Frame test → Dry run**, then download. Run it with the holder **attached at the pause** but no pen.
+   - Does the toolhead stay clear of the door, frame and left wall across the whole frame? *(Validates A3.)*
+   - On resume, does the firmware home XY? If so, does the holder clear? *(A5)*
+   - Does the `G380` preamble behave (the bed drops about 10 mm before homing)? *(A8)*
+   - Does the screen show progress? *(A10)*
+   - Is there a final pause, and does the job end cleanly with no extra moves after resume? *(A9)*
+
+### 9.3 Offset finder (with pen)
+
+1. **Calibrate → Offset finder** → download → run.
+2. At pause 3, measure from the nozzle tip to the center of the cross: record ΔX (right +) and ΔY (back +).
+   - **Expected** about ΔX −28, ΔY −35 (or around −41 per Falu's margins).
+3. Enter the values in Printer settings. If the X sign is +, update `BAMBU_BASE.penOffsetX` in `gcode.js` and every
+   doc that mentions −28 (README, Help, HANDOFF, memory note).
+
+### 9.4 Z calibration
+
+1. **Calibrate → Compact** (Z 12…17, highest Z first). Record the first Z that draws a solid line and the lowest Z
+   before dragging or tearing.
+2. Set Z-Draw to about the first-solid value minus 0–0.5. Optionally run **Full** for speed.
+
+### 9.5 Real plot
+
+1. Plot the welcome design on Letter paper at the front-left corner.
+2. Check line quality at the chosen speed and acceleration, whether the holder wobbles, and whether any ink ghosts
+   appear on travels (if so, raise Z-Lift).
+
+---
+
+## 10. Recommended next steps (with a full dev toolchain)
+
+1. **Put it under git.** Run `git init`, and add a `.gitignore` (node_modules, `.claude/` except `launch.json` if
+   wanted). Make the first commit as "v1 as handed off", then commit each step below separately.
+2. **Run the browser suite once** (`python serve.py` → `/tests/` → 200 scenarios) and record the numbers here.
+3. **Node + Vitest for the core.** `js/core/*` modules are pure apart from `window.PP` and a few DOM uses:
+   `DOMParser` in svg/fonts, `document.createElement('canvas')` in svg color normalization, and `fetch` in fonts.
+   - Option A: run them under Vitest with `environment: 'jsdom'` plus `canvas` or `@napi-rs/canvas` for ImageData,
+     loading the scripts with `vm.runInContext` or a small loader that concatenates files in `index.html` order.
+   - Option B (preferred, longer term): convert to **ES modules** and keep a tiny bundling-free `index.html` that uses
+     `<script type="module">`. That breaks `file://`, so ship `serve.py` or build a single-file bundle with
+     esbuild/Vite for distribution.
+   - Port `tests/tests.js` suites 1–5 as Vitest suites, and keep the seeded fuzz with a configurable count
+     (`FUZZ_N=2000` nightly).
+4. **Playwright E2E** against `serve.py`:
+   - app boot, no console errors;
+   - drawing tools via real mouse events (drag, scale, rotate handles);
+   - text editing, font change, pattern add/edit;
+   - image dialog with a fixture PNG;
+   - SVG drag and drop;
+   - export dialog (the safety check shows passed; intercept the download and run the simulator on it);
+   - preview play/scrub;
+   - calibration downloads;
+   - undo/redo;
+   - screenshots for visual regression.
+5. **Static checks:** ESLint (browser globals, `no-undef`) and `tsc --checkJs --noEmit` with JSDoc types. Start with
+   `gcode.js`, `gcodesim.js`, `optimizer.js`, `geometry.js`. Add Prettier.
+6. **CI:** a GitHub Actions workflow running lint, typecheck, Vitest (plus a fuzz sample) and Playwright headless.
+7. **Offline fonts:** vendor `hersheytext@2.0.0` (`hersheytext.min.json` + `svg_fonts/*.svg`, MIT, include the
+   Hershey attribution) and opentype.js 1.3.4 into `vendor/`, and fall back to the CDN.
+8. **Profile migration:** add `schemaVersion` to stored profiles, and on v1 → v2 reset built-in overrides for offset
+   and limits, with a toast.
+9. **Features after hardware validation:** `.gcode.3mf` export (port bambox) for Bambu Studio/Handy LAN sending;
+   direct LAN upload (FTPS + MQTT) through a small local helper, since browsers can't do FTPS; a G-code
+   importer/viewer that runs the simulator on any file; a Web Worker for tracing; an "estimated plot time" warning
+   for huge designs; A1/A1 mini, P2S and H2 profiles once their mounts are measured.
+
+---
+
+## 11. Session change log (chronological)
+
+1. Researched the Instructables guide, 3dplotter.xyz, the Bambu G-code references, and the hersheytext package
+   structure (JSON glyph format: `o` = half advance, cap 21 units, baseline y = 22).
+2. Built the whole app: core, state, canvas and tools, panels, modals, the image dialog and the handwriting editor.
+   Two subagents wrote `patterns.js` and `imagetrace.js`.
+3. Browser-tested the UI flows and fixed:
+   - the bed fit before the layout settled;
+   - clicks inside large unfilled shapes selecting them;
+   - the eraser skipping strokes on fast drags;
+   - synthetic pointer capture;
+   - stale cached JS (added `serve.py` with no-cache).
+4. Switched the Bambu dwell from `G4` to `M400 P`; removed `M73 L`; park moved to Y40 (then moved again, below).
+5. **User request:** "test it simulating the g code paths". Wrote `gcodesim.js`, wired it into Export, Calibration and
+   Preview, and added the `tests/` suite.
+6. **User shared Falu's MakerWorld notes.** Adopted the safe zone (X ≥ 48, Y ≥ 55), flipped the offset to X −28,
+   park (152, 70), end (152, 250), added the end pause, the Bambu safe-start preamble, the Offset finder, the pen-down
+   Z safe window, "Designer margins" paper placement, and the doc/help updates.
+7. Test runs found and fixed the bugs listed in §7.2.
+
+---
+
+## 12. Where the user is
+
+- The user has built the mount by following the Instructables guide. They have no printer measurements yet.
+- They'll continue on another machine that has Node and the other dev tools. §9 is the first thing to do with the
+  printer, and §10 is the first thing to do with the tools.
+- Memory note stored for future agent sessions: `x1c-plotter-hardware-assumptions` (Claude memory dir). Update it when
+  §9 answers come in.
+
+---
+
+## Session end status
+
+**Final test run (2026-09-29 21:43 local, seed 1, 200 fuzz scenarios, browser suite `tests/index.html`):**
+
+| Metric | Value |
+|---|---|
+| Checks passed / failed | **2123 / 0** |
+| G-code files generated and simulated | 271 (combined, dry-run and per-layer files) |
+| Simulated moves | 1,455,780 |
+| Pen-down strokes checked point-by-point against the plan | 75,245 |
+| Line length checked for coverage and precision against the design | 787 m |
+| Fidelity skipped (designs over 120 m of line) | 2 |
+| Slowest single scenario | ≈ 22 s (a huge hatched design; mostly test-side fidelity work) |
+| Wall time | 73 s |
+
+**App smoke test after all changes** (main page, X1C defaults):
+- boots with no console errors;
+- the export dialog shows "Safety check passed: Simulated 977 moves: 60 strokes…";
+- the preview animates the simulated G-code with a "✓ G-code check passed" badge;
+- the Offset finder renders;
+- the drawable area is X 21–227 × Y 21–220.
+
+**Uncommitted state:** the project is **not** a git repository yet. A `.gitignore` is included. Do §10 step 1 first.

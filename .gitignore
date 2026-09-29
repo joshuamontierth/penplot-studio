@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Test / tool output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+*.log
+*.tsbuildinfo
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Claude Code: keep shared project config, ignore personal settings
+.claude/*
+!.claude/launch.json
+!.claude/settings.json
