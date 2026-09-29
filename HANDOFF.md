@@ -1,7 +1,8 @@
 # PenPlot Studio — Engineering Handoff
 
-_Written 2026-09-29 at the end of the first build session. It's meant to let someone (a person or an agent) pick
-this project up on a machine with full dev tools. Read sections 1–3 before touching printer-related code._
+_Written 2026-09-29 at the end of the first build session. Updated the same day after session 2, which set up
+git and the Node dev toolchain (§1, §7.5, §10, §11). It's meant to let someone (a person or an agent) pick this
+project up. Read sections 1–3 before touching printer-related code._
 
 ---
 
@@ -15,8 +16,11 @@ this project up on a machine with full dev tools. Read sections 1–3 before tou
 - **Hardware state:** **never run on the real printer.** Several physical facts are *inferred* (§3). The most
   important unknown is the **sign of the pen X offset**. The default is now −28 (pen left of the nozzle), which
   contradicts the Instructables wording. The app has an **Offset finder** calibration to settle it in about 5 minutes.
-- **Next steps:** (1) put the project under git; (2) run the first physical checks in §9; (3) set up Node, Vitest
-  and Playwright and move the tests into CI (§10).
+- **Dev tooling (session 2):** git, Node 24, Vitest (Node + jsdom), Playwright (headless browser suite + UI tests),
+  ESLint, Prettier, `tsc --checkJs`, and a GitHub Actions workflow for Ubuntu and Windows. Fonts are vendored, so
+  tests and the served app are fully offline.
+- **Next steps:** (1) run the first physical checks in §9; (2) push to GitHub so CI runs; (3) the remaining items
+  in §10.
 
 ---
 
@@ -24,15 +28,18 @@ this project up on a machine with full dev tools. Read sections 1–3 before tou
 
 | Purpose | Command / action |
 |---|---|
-| Use the app | Double-click `index.html` (Chrome/Edge), or `python serve.py`, which serves http://127.0.0.1:8791 with no caching and opens a browser |
-| Run tests | `python serve.py`, then open http://127.0.0.1:8791/tests/ → **Run all tests** (200 fuzz scenarios ≈ 3–5 min). Programmatic: `await window.runPenPlotTests()` returns `{pass, fail, failures, stats}` |
-| Replay one fuzz case | On the tests page: `await replayScenario(<seed>)` returns `{P, prefs, plan, res, sim, mismatch}` |
-| Windows shortcut | `Start PenPlot Studio.bat` runs serve.py, or opens index.html directly if Python is missing |
+| Set up (once) | Node 24 LTS, then `npm ci` and `npx playwright install chromium`. See README → Development for Linux/Windows install commands |
+| Use the app | Double-click `index.html` (Chrome/Edge), or `npm start` / `python serve.py`, which serve http://127.0.0.1:8791 with no caching and open a browser |
+| Develop | `npm run dev` (live reload) |
+| Run tests | `npm test` (Vitest, ≈ 20 s), `npm run test:e2e` (Playwright: UI + browser suite with 60 fuzz scenarios), `npm run check` (all of CI). Manual: open http://127.0.0.1:8791/tests/ → **Run all tests** |
+| Replay one fuzz case | On the tests page: `await replayScenario(<seed>)` returns `{P, prefs, plan, res, sim, mismatch}` and draws it. Seeds are the ones printed by Vitest or the browser runner |
+| Windows shortcut | `Start PenPlot Studio.bat` uses Node, then Python, then opens index.html directly |
 
 - **Build step:** none. Everything is classic `<script>` tags in dependency order (see `index.html`), and every module
   attaches to `window.PP`.
-- **Runtime network needs:** Hershey fonts come from `cdn.jsdelivr.net/npm/hersheytext@2.0.0/…`, and opentype.js from
-  cdnjs (it's only loaded when a TTF/OTF is uploaded).
+- **Runtime network needs:** none when served. The Hershey fonts and opentype.js are in `vendor/` (see
+  `scripts/vendor.mjs`). `file://` pages can't `fetch()` local files, so they still load fonts from
+  `cdn.jsdelivr.net/npm/hersheytext@2.0.0/`.
 - **Note:** port 8765 on the original machine is used by an unrelated local wiki server. The app uses **8791**.
 
 ---
@@ -225,7 +232,7 @@ point, and **pauses so you can measure**. It ends with the bed down and the tool
 
 ## 7. Testing status
 
-### 7.1 Suite contents (`tests/tests.js`)
+### 7.1 Suite contents (`tests/harness.js`, run by `tests/tests.js` in the browser and by Vitest in Node)
 
 1. **Simulator self-test.** It takes a valid file and applies 20 mutations; each must raise the expected code:
    - missing attach pause, missing pen lift, pen pushed into the bed, nozzle into the excluded zone, holder off the plate
@@ -291,6 +298,25 @@ when the session ended.
   on the same origin.
 - Fidelity is skipped for designs over 120 m of line and logged. The simulator and exact-plan checks still run.
 
+### 7.5 Automated runners (session 2)
+
+| Runner | Command | Contents | Result (2026-09-29) |
+|---|---|---|---|
+| Vitest (Node 24 + jsdom) | `npm test` | Harness suites 1–5 as named tests (fuzz: `FUZZ_N`, default 30), plus unit tests: `gcode` (X1C defaults, §4.4 rules, golden file), `geometry`, `svg`, `optimizer`, module loading | 12 files, **328 passed**, ≈ 20 s |
+| Playwright (Chromium) | `npm run test:e2e` | Browser suite with 60 fuzz scenarios, plus 17 UI tests: boot, every drawing tool with real mouse input, select/drag/nudge/delete, undo/redo, text, patterns, SVG drop, export (the download is re-simulated), preview, calibration | **18 passed**, ≈ 30 s |
+| Reference browser run | `npm run test:e2e:full` | Browser suite, 200 fuzz scenarios, seed 1 | **2123 passed / 0 failed**: 271 files, 1,452,736 moves, 75,092 strokes, 787 m, 34.7 s headless |
+
+- **One harness, two runners.** A seed builds the same scenario in Node and in Chromium. The trace-mode test image
+  is now generated with plain arithmetic instead of canvas, which is why the move and stroke totals differ slightly
+  from session 1's run.
+- **Node vs browser.** jsdom has no 2D canvas, so SVG stroke colors all become black in Node. Color grouping is
+  only covered in the browser. Everything else behaves the same.
+- **Offline.** `test/unit/setup.js` serves `vendor/` through a fetch shim that throws on any other URL. The Playwright
+  fixtures (`e2e/fixtures.js`) abort every non-localhost request and fail a test on any console error or warning.
+- **Golden file.** `test/unit/__snapshots__/x1c-square.gcode` is the exact output for a 10 mm square on the X1C. A
+  deliberate generator change shows up as a diff there; review it, then run `npx vitest -u`.
+- **Found by the new tests:** 3 SVG import bugs, fixed in session 2 (§11), and one UX bug, §8 item 14.
+
 ---
 
 ## 8. Known issues and limitations
@@ -305,7 +331,7 @@ when the session ended.
 6. **No `.gcode.3mf` export.** Bambu's format needs about 544 project-settings keys and MD5 metadata
    (see github.com/estampo/bambox). Files go by SD card, or by FTPS upload to the printer (port 990, user `bblp`,
    the LAN access code) and are started from the screen.
-7. **Fonts need internet** (CDN). There's no offline vendoring yet.
+7. ~~Fonts need internet~~: vendored in session 2. Only `file://` pages still use the CDN.
 8. **Image tracing runs on the main thread**, so 1600 px images can stutter the UI. Move it to a Web Worker.
 9. **The preview** renders completed strokes by appending to a `Path2D`; scrubbing backwards rebuilds it. That's fine up
    to about 100k strokes.
@@ -314,9 +340,21 @@ when the session ended.
 11. **Very large designs** (km of line) work, but they're slow and produce huge files. There's no warning yet
     ("this will take 30 hours").
 12. **`file://` mode** hasn't been verified in a real browser: the built-in pane only renders snapshots. It should work
-    because it uses classic scripts and CORS-enabled CDNs. `serve.py` is the fallback.
+    because it uses classic scripts and CORS-enabled CDNs. Fonts come from the CDN in this mode, since `fetch()`
+    can't read `file://`. `npm start` / `serve.py` are the fallback. Playwright only tests the served app.
 13. **A browser with old saved profile overrides** keeps +28 and nozzle min 0 (§4.3). Consider a one-time migration
     that flags overrides older than profile schema v2.
+14. **Thin objects squash instead of moving** when dragged from their centre (found by the UI tests). At the default
+    zoom, the top and bottom edge scale handles of a thin object, such as the welcome design's 5.5 mm tagline, are
+    within the 7 px handle hit radius of its centre. A press there starts a scale, so scaleY drops to 0.01.
+    `e2e/editing.spec.js` works around it by grabbing at 30% of the width. Fix in `js/app/canvas.js` by preferring
+    move inside the frame when handles overlap it.
+15. **Simulator parameter flags:** a bare letter (`G28 X`, or a malformed `M104 S`) is stored as `true` and reads as 1
+    in numeric checks. The generator never emits one.
+16. **Tooling scope:** `tsc --checkJs` covers geometry, optimizer, gcode and gcodesim, with `PP` typed `any`.
+    Prettier skips `js/`, `css/`, the HTML, `tests/` and Markdown on purpose; a reformat would expand the code
+    25–40%. Remove those lines from `.prettierignore` to opt in. There are no screenshot (visual regression)
+    tests, because font rendering differs between Windows and Linux and would need per-OS baselines.
 
 ---
 
@@ -364,10 +402,13 @@ Record every answer. They settle the assumptions in §3.
 
 ## 10. Recommended next steps (with a full dev toolchain)
 
-1. **Put it under git.** Run `git init`, and add a `.gitignore` (node_modules, `.claude/` except `launch.json` if
-   wanted). Make the first commit as "v1 as handed off", then commit each step below separately.
-2. **Run the browser suite once** (`python serve.py` → `/tests/` → 200 scenarios) and record the numbers here.
-3. **Node + Vitest for the core.** `js/core/*` modules are pure apart from `window.PP` and a few DOM uses:
+**Status after session 2:** steps 1–7 are done, apart from the gaps noted inline. Steps 8–9 are open.
+
+1. ✅ **Put it under git.** `main` = "v1 as handed off"; the tooling commits are on `dev-tooling`, one per step.
+2. ✅ **Run the browser suite once** with 200 scenarios. The numbers are in §7.5.
+3. ✅ **Node + Vitest for the core.** Done as a variant of Option A: Vitest imports the classic scripts as side-effect
+   modules under jsdom in `tests/index.html` order, with no source changes and with v8 coverage. Option B (ES modules)
+   is still open. `js/core/*` modules are pure apart from `window.PP` and a few DOM uses:
    `DOMParser` in svg/fonts, `document.createElement('canvas')` in svg color normalization, and `fetch` in fonts.
    - Option A: run them under Vitest with `environment: 'jsdom'` plus `canvas` or `@napi-rs/canvas` for ImageData,
      loading the scripts with `vm.runInContext` or a small loader that concatenates files in `index.html` order.
@@ -376,7 +417,8 @@ Record every answer. They settle the assumptions in §3.
      esbuild/Vite for distribution.
    - Port `tests/tests.js` suites 1–5 as Vitest suites, and keep the seeded fuzz with a configurable count
      (`FUZZ_N=2000` nightly).
-4. **Playwright E2E** against `serve.py`:
+4. ✅ **Playwright E2E** against `scripts/serve.mjs`. Everything below is covered except the image dialog with a
+   fixture PNG and the visual-regression screenshots (§8 item 16):
    - app boot, no console errors;
    - drawing tools via real mouse events (drag, scale, rotate handles);
    - text editing, font change, pattern add/edit;
@@ -387,10 +429,10 @@ Record every answer. They settle the assumptions in §3.
    - calibration downloads;
    - undo/redo;
    - screenshots for visual regression.
-5. **Static checks:** ESLint (browser globals, `no-undef`) and `tsc --checkJs --noEmit` with JSDoc types. Start with
+5. ✅ **Static checks:** see §8 item 16 for the scope. ESLint (browser globals, `no-undef`) and `tsc --checkJs --noEmit` with JSDoc types. Start with
    `gcode.js`, `gcodesim.js`, `optimizer.js`, `geometry.js`. Add Prettier.
-6. **CI:** a GitHub Actions workflow running lint, typecheck, Vitest (plus a fuzz sample) and Playwright headless.
-7. **Offline fonts:** vendor `hersheytext@2.0.0` (`hersheytext.min.json` + `svg_fonts/*.svg`, MIT, include the
+6. ✅ **CI:** `.github/workflows/ci.yml`, Ubuntu + Windows, nightly deep fuzz. It runs once the repo is pushed to GitHub. a GitHub Actions workflow running lint, typecheck, Vitest (plus a fuzz sample) and Playwright headless.
+7. ✅ **Offline fonts:** `vendor/`, rebuilt by `npm run vendor`. vendor `hersheytext@2.0.0` (`hersheytext.min.json` + `svg_fonts/*.svg`, MIT, include the
    Hershey attribution) and opentype.js 1.3.4 into `vendor/`, and fall back to the CDN.
 8. **Profile migration:** add `schemaVersion` to stored profiles, and on v1 → v2 reset built-in overrides for offset
    and limits, with a toast.
@@ -421,19 +463,45 @@ Record every answer. They settle the assumptions in §3.
    Z safe window, "Designer margins" paper placement, and the doc/help updates.
 7. Test runs found and fixed the bugs listed in §7.2.
 
+**Session 2 (2026-09-29, Ubuntu 24.04 machine): dev toolchain**
+
+8. `git init`, `.gitignore`, `.gitattributes`: LF everywhere, CRLF for `.bat` so `cmd.exe` is happy and the golden
+   file matches on Windows. Also `.editorconfig`. First commit "v1 as handed off"; later work on `dev-tooling`.
+9. Node 24 LTS toolchain: `package.json` with exact pins, `.nvmrc`, and `engine-strict`. Ubuntu's apt Node 18 is too
+   old for every current tool. `scripts/serve.mjs` is a no-cache server with optional live reload that replaces
+   the need for Python. The `.bat` launcher now tries Node, then Python.
+10. Vendored hersheytext 2.0.0 and opentype.js 1.3.4 with `npm pack` (integrity-checked), so the packages'
+    vulnerable Node-side dependencies are never installed. `fonts.js` tries local copies first.
+11. Split `tests/tests.js` into `harness.js` (named cases, no DOM) plus a thin browser runner. Added Vitest,
+    Playwright (via two subagents for the geometry/svg/optimizer unit tests and the UI specs), ESLint, Prettier,
+    `tsc --checkJs` and CI. The only app-code changes from lint were dead-code removals.
+12. The new tests found and fixed these `svg.js` import bugs:
+    - Sign-separated numbers (`translate(10-5)`, `points="0,0 10-5"`) were misread.
+    - A NaN matrix came from an empty `scale()`.
+    - A self-referencing `<use>` was expanded 32 times, or hung the tab with two self-references.
+    - An element budget now stops pathological files.
+13. Fixed a Windows risk in the dev server: the "is main module" check could fail when drive-letter casing differs.
+
 ---
 
 ## 12. Where the user is
 
 - The user has built the mount by following the Instructables guide. They have no printer measurements yet.
-- They'll continue on another machine that has Node and the other dev tools. §9 is the first thing to do with the
-  printer, and §10 is the first thing to do with the tools.
+- Session 2 ran on an Ubuntu 24.04 machine. The user works on both Windows and Linux, so tooling must stay
+  cross-platform. Node 24 is installed system-wide from NodeSource (Linux) or `winget install OpenJS.NodeJS.LTS`
+  (Windows). §9 is the next thing to do with the printer.
 - Memory note stored for future agent sessions: `x1c-plotter-hardware-assumptions` (Claude memory dir). Update it when
   §9 answers come in.
 
 ---
 
 ## Session end status
+
+**Session 2 (2026-09-29):** on branch `dev-tooling`, `npm run check` passes: lint, format, typecheck, Vitest 328/328
+and Playwright 18/18. The 200-scenario reference browser run gives 2123 passed / 0 failed (§7.5). CI has not run yet,
+because there's no GitHub remote. The Windows jobs are the first real Windows check of the tooling.
+
+**Session 1 (below)**
 
 **Final test run (2026-09-29 21:43 local, seed 1, 200 fuzz scenarios, browser suite `tests/index.html`):**
 

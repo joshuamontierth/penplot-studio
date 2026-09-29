@@ -14,13 +14,45 @@ safety check first) and print it from the SD card. There are no firmware changes
 ## Running it
 
 - **Easiest:** double-click `index.html` to open it in Chrome or Edge.
-- **Recommended while developing:** `python serve.py`, which starts a no-cache server on
-  http://127.0.0.1:8791 and opens your browser. You can also double-click `Start PenPlot Studio.bat`.
-- **Tests:** start the server, then open http://127.0.0.1:8791/tests/ and click **Run all tests**.
+- **Local server (works offline):** `npm start` (Node) or `python serve.py`. Either one serves
+  http://127.0.0.1:8791 with caching off and opens your browser. On Windows you can also double-click
+  `Start PenPlot Studio.bat`, which uses Node, then Python, and falls back to opening `index.html`.
 
-You need an internet connection for text: the Hershey fonts come from jsDelivr, and opentype.js (for uploaded
-fonts) comes from cdnjs. Work autosaves to IndexedDB in the browser. Use **Save project** to keep a
+Fonts and opentype.js (for uploaded fonts) are bundled in `vendor/`. With a local server the app needs no
+internet at all. A page opened by double-clicking (`file://`) can't read local font files, so it loads them
+from jsDelivr/cdnjs instead. Work autosaves to IndexedDB in the browser. Use **Save project** to keep a
 `.penplot.json` file.
+
+## Development
+
+The app itself has no build step: `js/` is plain browser scripts loaded in order by `index.html`. The dev
+tooling runs on **Node 24 LTS** on Windows and Linux.
+
+| Setup | Linux (Ubuntu) | Windows |
+|---|---|---|
+| Node 24 | NodeSource: `curl -fsSL https://deb.nodesource.com/setup_24.x \| sudo -E bash -` then `sudo apt install nodejs` | `winget install OpenJS.NodeJS.LTS` |
+| Dependencies | `npm ci` | `npm ci` |
+| Test browser (once) | `npx playwright install chromium` | `npx playwright install chromium` |
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server with live reload (the page reloads on save; CSS swaps in place) |
+| `npm start` | Dev server without live reload (`-- --port 9000`, `-- --no-open`) |
+| `npm test` | Vitest: unit tests + the shared suites + a 30-scenario seeded fuzz, in Node (≈ 20 s) |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run test:coverage` | Coverage report in `coverage/` |
+| `npm run test:fuzz` | 2000 fuzz scenarios (`FUZZ_N` / `FUZZ_SEED` override counts in any test command) |
+| `npm run test:e2e` | Playwright: UI tests + the full browser suite in Chromium, offline |
+| `npm run test:e2e:full` | Browser suite with 200 fuzz scenarios (the reference run) |
+| `npm run lint` / `format` / `typecheck` | ESLint, Prettier, `tsc --checkJs` on the core modules |
+| `npm run check` | Everything CI runs |
+| `npm run vendor` | Re-download the pinned fonts / opentype.js into `vendor/` |
+
+`tests/harness.js` holds the suites and is shared by the browser page (`tests/index.html`) and Vitest
+(`test/unit/`), so a failing fuzz seed from either one replays in the other: open `/tests/` and run
+`await replayScenario(<seed>)` to see the simulated file drawn. `test/unit/__snapshots__/x1c-square.gcode` is a
+golden file. If a deliberate generator change alters the G-code, review the diff and run `npx vitest -u`.
+CI (`.github/workflows/ci.yml`) runs all of this on Ubuntu and Windows, plus a nightly deep fuzz.
 
 ## Features
 
@@ -89,9 +121,10 @@ It replays the text of the file on a virtual printer and flags these problems:
 
 It also rebuilds each stroke and travel move for the preview.
 
-## Tests (`tests/`)
+## Tests
 
-`tests/index.html` loads the real modules and runs these checks:
+`tests/harness.js` defines these suites. The browser page `tests/index.html` runs them (Run all tests, or
+headless with `npm run test:e2e`), and so does Vitest (`npm test`):
 
 1. **Simulator self-test:** 20 deliberately broken files, each of which must be caught.
 2. **Edge cases:** empty designs, dots, NaN/Infinity, huge coordinates, zero scale, 30k strokes, out-of-range overrides.
@@ -107,8 +140,12 @@ index.html  css/styles.css
 js/core/    util, geometry, svg, storage, fonts, optimizer, gcode, gcodesim, patterns, imagetrace
 js/app/     state (undo/redo, autosave), objects, canvas (+tools), preview, app (controller)
 js/ui/      ui-core, panels-left, panels-right, modals, imagedialog, handwriting
-tests/      index.html, tests.js
-serve.py    no-cache dev server
+vendor/     Hershey fonts (hersheytext 2.0.0) and opentype.js 1.3.4, with licenses
+tests/      browser test page: index.html, harness.js (shared suites), tests.js (runner)
+test/unit/  Vitest suites (Node + jsdom) and the golden G-code file
+e2e/        Playwright specs (UI + headless browser suite)
+scripts/    serve.mjs (dev server, live reload), vendor.mjs
+serve.py    no-cache server for machines with only Python
 HANDOFF.md  detailed status, open questions, next steps
 ```
 
