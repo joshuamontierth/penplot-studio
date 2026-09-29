@@ -316,7 +316,7 @@
 
     const warnings = new Set();
     // Root scaling: user units -> mm
-    let rootM = G.IDENTITY.slice();
+    let rootM;
     const vb = (root.getAttribute('viewBox') || '').split(/[\s,]+/).filter(Boolean).map(parseFloat);
     const wMm = parseLength(root.getAttribute('width'));
     const hMm = parseLength(root.getAttribute('height'));

@@ -41,6 +41,7 @@
     if (!m) return { cmd: '?', raw: s, comment, bad: 'Unparseable line' };
     const cmd = m[1].toUpperCase() + m[2].replace(/^0+(?=\d)/, '');
     const rest = m[3].trim();
+    /** @type {Record<string, number>} word letter -> value */
     const params = {};
     let bad = null;
     if (!TEXT_CMDS.has(cmd) && rest) {
@@ -48,7 +49,8 @@
         const t = /^([A-Za-z])(.*)$/.exec(tok);
         if (!t) { bad = 'Bad token "' + tok + '"'; continue; }
         const letter = t[1].toUpperCase();
-        if (t[2] === '') { params[letter] = true; continue; }
+        // a bare letter (G28 X) is a flag: stored as true, which numeric checks read as 1
+        if (t[2] === '') { params[letter] = /** @type {any} */ (true); continue; }
         if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(t[2])) { bad = 'Bad number "' + tok + '"'; continue; }
         params[letter] = parseFloat(t[2]);
       }

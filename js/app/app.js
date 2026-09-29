@@ -210,7 +210,6 @@
       const c = G.bboxCenter(bb);
       const m = new Map(sel.map(o => {
         // mirroring in world space: reflect position and flip the object's local axis
-        const r = o.rotation * Math.PI / 180;
         if (axis === 'x') return [o.id, { x: 2 * c.x - o.x, rotation: -o.rotation, scaleX: -o.scaleX }];
         return [o.id, { y: 2 * c.y - o.y, rotation: -o.rotation, scaleY: -o.scaleY }];
       }));

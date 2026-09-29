@@ -1,0 +1,17 @@
+# Generated / third-party
+node_modules/
+vendor/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+package-lock.json
+test/unit/__snapshots__/
+
+# Hand-formatted app code and docs: kept out of Prettier on purpose (a reformat would expand the
+# dense style by 25-40% and bury `git blame`). Remove these lines to opt in with one `npm run format`.
+js/
+css/
+*.html
+tests/
+*.md

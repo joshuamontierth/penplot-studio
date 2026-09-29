@@ -321,7 +321,7 @@
 
   function glyph(f, ch) {
     if (f.glyphs.has(ch)) return f.glyphs.get(ch);
-    let g = null;
+    let g;
     try { g = f.glyphFn ? f.glyphFn(ch) : null; } catch (e) { g = null; }
     f.glyphs.set(ch, g);
     return g;

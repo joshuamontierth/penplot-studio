@@ -162,7 +162,7 @@
     },
 
     safeFilename(name, fallback = 'plot') {
-      const s = String(name || '').trim().replace(/[^A-Za-z0-9_\-]+/g, '_').replace(/^_+|_+$/g, '');
+      const s = String(name || '').trim().replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
       return (s || fallback).slice(0, 60);
     },
 

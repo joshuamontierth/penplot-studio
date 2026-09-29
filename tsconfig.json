@@ -1,0 +1,21 @@
+{
+  // Type-checks JSDoc'd JavaScript without emitting anything (`npm run typecheck`).
+  // Start with the safety-critical core modules; add files to "include" as they get JSDoc types.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": [
+    "types/**/*.d.ts",
+    "js/core/geometry.js",
+    "js/core/optimizer.js",
+    "js/core/gcode.js",
+    "js/core/gcodesim.js"
+  ]
+}

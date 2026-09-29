@@ -2,7 +2,7 @@
 (function (PP) {
   'use strict';
 
-  const U = PP.U, S = PP.Store, G = PP.Geo, h = U.h;
+  const U = PP.U, S = PP.Store, h = U.h;
   const UI = PP.UI;
 
   // ---------------------------------------------------------------------------
