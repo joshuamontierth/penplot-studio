@@ -78,7 +78,7 @@ CI (`.github/workflows/ci.yml`) runs all of this on Ubuntu and Windows, plus a n
 | Drawable area | ≈ 206 × 199 mm | Pen X 21–227, Y 21–220: the safe zone shifted by the offset, with a 1 mm margin |
 | Z-Draw / Z-Lift | 14 / 20 mm | From Instructables. The designer uses Z ≈ 17 for a Stabilo; it depends on how far the pen sticks out |
 | Attach / end height | 60 / 80 mm | The bed drops this far for attaching and removing the holder |
-| Park (pauses) | nozzle X152 Y70 | Inside the safe zone and reachable through the door |
+| Park (pauses) | nozzle X80 Y245 | Next to the purge chute, where the firmware moves the toolhead during every pause (it returns on Resume) |
 | Speeds | draw 30, travel 200, Z 15 mm/s, accel 4000 | |
 | Pen-down dwell | 50 ms via `M400 P50` | `G4` is reportedly unreliable on the X1 |
 
@@ -88,7 +88,7 @@ CI (`.github/workflows/ci.yml`) runs all of this on Ubuntu and Windows, plus a n
 G90 / G21 / M83, heaters off, fans off, M220 S100, M204 S4000
 G91 / M17 Z0.4 / G380 S2 Z30 / G380 S2 Z-25 / G1 Z5 / G90 / M17 ...   ; Bambu's own "drop the bed before homing"
 G28                         ; home - holder NOT attached
-G1 Z60 / G1 X152 Y70        ; bed down, park
+G1 Z60 / G1 X80 Y245        ; bed down, park near the purge chute
 M400 U1                     ; PAUSE 1: attach the pen holder, press Resume
 G1 Z20                      ; pen up (travel height)
   G1 X.. Y.. F12000         ; travel (nozzle coords = pen - offset)
