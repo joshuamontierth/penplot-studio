@@ -277,7 +277,7 @@
         h('li', null, 'Tape the paper down where the canvas shows it. Do ', h('b', null, 'not'), ' attach the pen holder yet.'),
         h('li', null, 'On the printer screen: ', h('b', null, 'Print files → SD card'), ' → pick the file → Print.'),
         x1c ? h('li', null, 'Before plotting, turn off AI monitoring (spaghetti, purge chute pile-up and nozzle clumping detection) and ', h('b', null, 'Auto-recovery from step loss'), ' in the printer settings: they can pause or re-home the toolhead with the holder attached.') : null,
-        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? ' While paused the firmware moves the toolhead to the purge chute (back left); it returns on Resume.' : null),
+        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? ' While paused the firmware moves the toolhead to the purge chute (back left) and warms the nozzle to about 90 °C - do not touch it. On Resume it waits 30-60 s for the nozzle to cool, then returns.' : null),
         p.pauseForAttach ? h('li', null, 'Clip the pen holder onto the toolhead where it stops, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '. Do not jog the toolhead with the holder on.') : null,
         plan.jobs.length > 1 && mode === 'combined' && p.layerPause ? h('li', null, 'Between layers the printer pauses again: swap to the next pen color and press Resume.') : null,
         p.endPause
@@ -537,6 +537,7 @@
         h('li', null, h('b', null, 'Never start a normal 3D print with the module attached'), ' - it can collide when the printer cuts filament.'),
         h('li', null, 'Turn off AI monitoring (spaghetti, purge chute pile-up, nozzle clumping) and Auto-recovery from step loss before plotting: they can pause or re-home the toolhead with the holder attached.'),
         h('li', null, 'Emergency: use ', h('b', null, 'Stop'), ' on the screen or the power switch. Pause moves the toolhead to the purge chute. Never jog the toolhead with the holder attached.'),
+        h('li', null, 'During every pause the firmware warms the nozzle to about 90 °C (then waits for it to cool on Resume). Keep fingers off the nozzle while attaching or removing the holder, and make sure the holder does not rest against the hotend - PLA softens around 60 °C.'),
         h('li', null, 'Heaters stay off and the G-code contains no extrusion.'),
         h('li', null, 'Every file is replayed in a G-code simulator before download. It checks the module safe zone, pen heights, travel lifts, pauses and the end of the file, and asks before you download a file that fails.'),
         h('li', null, 'The nozzle safe zone (Printer settings → Bed & limits) keeps the module away from the frame and door. The striped area on the canvas is where the pen cannot go.'),
