@@ -357,17 +357,17 @@ when the session ended.
     move inside the frame when handles overlap it.
 15. **Simulator parameter flags:** a bare letter (`G28 X`, or a malformed `M104 S`) is stored as `true` and reads as 1
     in numeric checks. The generator never emits one.
-17. **Open UX items from the session 2 bug hunt** (none affect G-code):
-    - Panel "Add" buttons (text, pattern, paste, SVG, trace) add to a hidden or locked active layer without a warning.
-      The canvas tools do warn.
-    - Ctrl+S, Ctrl+E and Ctrl+O don't work while a text field has focus.
-    - Space doesn't resume the preview while the scrubber has focus, and edits during preview leave its plan stale.
-    - A design entirely outside the drawable area says "Nothing to plot", not "outside the drawable area".
-    - An empty text object can't be clicked (select it with Ctrl+A).
-    - A very tall or thin traced image defaults to a huge size.
-    - "Save as new profile" appends " (custom)" to the name.
-    - A cancelled file pick leaves a hidden input in the page.
-    - Non-ASCII project names are stripped in file names.
+17. ~~Open UX items from the session 2 bug hunt~~: all fixed on 2026-09-30.
+    - Adding objects to a hidden or locked layer is refused.
+    - Ctrl+S, Ctrl+E and Ctrl+O work while typing.
+    - The preview keys work while its scrubber has focus; the preview closes when the design changes and blocks
+      keyboard edits.
+    - The empty-plan messages say why nothing will plot.
+    - Emptied text objects are removed on deselect.
+    - Tall traced images fit the drawable area.
+    - Profile names are no longer given a " (custom)" suffix.
+    - A cancelled file pick is cleaned up.
+    - Accents are kept as their base letter in file names.
 16. **Tooling scope:** `tsc --checkJs` covers geometry, optimizer, gcode and gcodesim, with `PP` typed `any`.
     Prettier skips `js/`, `css/`, the HTML, `tests/` and Markdown on purpose; a reformat would expand the code
     25–40%. Remove those lines from `.prettierignore` to opt in. There are no screenshot (visual regression)

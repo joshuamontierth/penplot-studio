@@ -16,7 +16,8 @@
     const area = PP.App.workArea();
     const aw = area.maxX - area.minX - 16, ah = area.maxY - area.minY - 16;
     const aspect = img.naturalHeight / img.naturalWidth;
-    const fitW = Math.max(20, Math.min(aw, ah / aspect));
+    // fit both sides into the drawable area (a 20 mm minimum width made a 10 x 3000 px image 6 m tall)
+    const fitW = Math.max(1, Math.min(aw, ah / (aspect || 1)));
     const st = {
       mode: saved.mode && IT.modes.some(m => m.id === saved.mode) ? saved.mode : IT.modes[0].id,
       params: saved.params || {},

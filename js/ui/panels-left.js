@@ -120,6 +120,7 @@
     }
     function addText() {
       const c = PP.App.placementCenter();
+      if (!PP.App.requireEditableLayer()) return;
       const o = OBJ.create.text(Object.assign({}, textDefaults, { x: c.x, y: c.y, name: 'Text' }));
       S.add(o);
       PP.Fonts.load(o.font).catch(() => {});

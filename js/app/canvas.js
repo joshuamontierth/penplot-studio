@@ -499,12 +499,7 @@
   // Tools
   // ===========================================================================
   function requireEditableLayer() {
-    const L = S.activeLayer();
-    if (!L.visible || L.locked) {
-      PP.UI.toast('The active layer "' + L.name + '" is ' + (L.locked ? 'locked' : 'hidden') + '. Pick another layer or unlock it.', 'warn');
-      return false;
-    }
-    return true;
+    return PP.App.requireEditableLayer();
   }
 
   function snapAngle(x0, y0, x1, y1) {

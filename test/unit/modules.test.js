@@ -54,3 +54,19 @@ describe('project loading', () => {
     expect(() => window.PP.App.buildPlan()).not.toThrow();
   });
 });
+
+describe('small UX helpers', () => {
+  it('keeps accented letters as their base letter in file names', () => {
+    expect(window.PP.U.safeFilename('héllo ✓ café')).toBe('hello_cafe');
+    expect(window.PP.U.safeFilename('✓✓')).toBe('plot');
+  });
+
+  it('explains an empty plan when everything is outside the drawable area', () => {
+    const S = window.PP.Store;
+    S.reset();
+    S.add(window.PP.Objects.create.shape('rect', { x: -500, y: 900, w: 50, h: 50 }), { history: false });
+    const plan = window.PP.App.buildPlan();
+    expect(plan.jobs).toHaveLength(0);
+    expect(window.PP.App.emptyPlanMessage(plan)).toMatch(/outside the drawable area/);
+  });
+});

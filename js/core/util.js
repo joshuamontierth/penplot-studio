@@ -137,6 +137,7 @@
           input.remove();
           resolve(f || null);
         });
+        input.addEventListener('cancel', () => { input.remove(); resolve(null); });
         input.click();
       });
     },
@@ -162,7 +163,8 @@
     },
 
     safeFilename(name, fallback = 'plot') {
-      const s = String(name || '').trim().replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+      // ASCII only (the printer's SD card file list), but accents are kept as their base letter: "héllo" -> "hello"
+      const s = String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
       return (s || fallback).slice(0, 60);
     },
 

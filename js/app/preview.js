@@ -228,11 +228,20 @@
     document.addEventListener('keydown', (e) => {
       if (!P.active || PP.UI.hasModal()) return;
       const tag = e.target && e.target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // typing in a field keeps its keys, except the preview's own scrubber and speed select
+      if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !P.bar.contains(e.target)) return;
       if (e.key === ' ') { e.preventDefault(); e.stopImmediatePropagation(); P.togglePlay(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopImmediatePropagation(); P.step(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopImmediatePropagation(); P.step(-1); }
     }, true);
+    // the preview shows a plan built when it opened: close it when the design or printer settings change
+    const stale = (k) => {
+      if (!P.active || k === 'selection' || k === 'transform') return;
+      P.stop();
+      PP.UI.toast('Preview closed because the design changed. Press Preview to see the new plan.', 'info');
+    };
+    PP.Store.events.on('change', stale);
+    PP.App.events.on('profile', () => stale('profile'));
   };
 
   /** Timeline from the G-code simulator: animates exactly what the file does. */
@@ -249,7 +258,7 @@
 
   P.start = function () {
     const plan = PP.App.buildPlan();
-    if (!plan.jobs.length) { PP.UI.toast('Nothing to preview - add something to a visible layer first.', 'warn'); return; }
+    if (!plan.jobs.length) { PP.UI.toast(PP.App.emptyPlanMessage(plan), 'warn'); return; }
     P.plan = plan;
     let sim = null;
     try {

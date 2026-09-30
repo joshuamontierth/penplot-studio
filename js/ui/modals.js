@@ -164,7 +164,7 @@
       }, { danger: true }),
       UI.btn('Save as new profile', () => {
         const errs = validate(); if (errs.length) return;
-        const id = App.duplicateProfile(draft.id, (draft.name || 'Printer') + ' (custom)');
+        const id = App.duplicateProfile(draft.id, draft.name || 'Printer'); // the list marks it "(custom)" itself
         const patch = {}; for (const k in PP.GCode.FIELD_DEFAULTS) patch[k] = draft[k];
         App.updateProfile(patch, id);
         m.close(); UI.openPrinterSettings();
@@ -201,7 +201,7 @@
     const plan = App.buildPlan();
     const p = plan.profile;
     const errs = PP.GCode.validateProfile(p);
-    if (!plan.jobs.length) { UI.toast('Nothing to plot - add something to a visible layer first.', 'warn'); return; }
+    if (!plan.jobs.length) { UI.toast(App.emptyPlanMessage(plan), 'warn'); return; }
     let mode = plan.jobs.length > 1 ? PP.Storage.getLocal('exportMode', 'combined') : 'combined';
     let dry = false;
     const R = PP.GCode.reachableRect(p);

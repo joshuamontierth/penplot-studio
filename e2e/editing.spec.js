@@ -2,7 +2,17 @@
 // text, patterns and SVG drag & drop. Bed coordinates are mm in pen space (Y up, 0,0 = front-left).
 /* global PP */
 import { test, expect } from './fixtures.js';
-import { clickOnBed, dragOnBed, lastObject, objectCount, objects, openApp, selection, toClient } from './helpers.js';
+import {
+  clickOnBed,
+  dialog,
+  dragOnBed,
+  lastObject,
+  objectCount,
+  objects,
+  openApp,
+  selection,
+  toClient,
+} from './helpers.js';
 
 const near = (actual, expected, tol = 0.5) =>
   expect(Math.abs(actual - expected), `${actual} ≈ ${expected}`).toBeLessThanOrEqual(tol);
@@ -363,5 +373,41 @@ test('layer rename by real double-click, locked objects stay selectable, overrid
   await z.fill('');
   await z.press('Enter');
   expect(await page.evaluate(() => PP.Store.project.layers[0].zDraw)).toBeNull();
+  expect(consoleProblems).toEqual([]);
+});
+
+test('UX guards: hidden layer, shortcuts while typing, empty text, stale preview', async ({
+  page,
+  consoleProblems,
+}) => {
+  // adding from a panel to a hidden active layer is refused with a warning
+  await page.evaluate(() => PP.Store.updateLayer(PP.Store.project.activeLayerId, { visible: false }));
+  const before = await objectCount(page);
+  await page.getByRole('button', { name: 'Add text to bed' }).click();
+  await expect(page.locator('.toast', { hasText: 'is hidden' })).toBeVisible();
+  expect(await objectCount(page)).toBe(before);
+  await page.evaluate(() => PP.Store.updateLayer(PP.Store.project.activeLayerId, { visible: true }));
+
+  // Ctrl+E works while a text field has focus
+  await page.getByRole('textbox', { name: 'Project name' }).click();
+  await page.keyboard.press('Control+e');
+  await expect(dialog(page, 'Download G-code')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog(page, 'Download G-code')).toBeHidden();
+
+  // a text object emptied in the Text panel is removed once deselected
+  const target = (await objects(page)).find((o) => o.text === 'Made with a pen plotter');
+  await clickOnBed(page, (target.bbox.minX + target.bbox.maxX) / 2, (target.bbox.minY + target.bbox.maxY) / 2);
+  expect(await selection(page)).toEqual([target.id]);
+  await page.locator('#left-panel textarea').first().fill('   ');
+  expect((await objects(page)).find((o) => o.id === target.id).text).toBe('   ');
+  await clickOnBed(page, 240, 240);
+  await expect.poll(async () => (await objects(page)).some((o) => o.id === target.id)).toBe(false);
+
+  // the preview closes when the design changes under it
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => PP.Preview.active)).toBe(true);
+  await page.evaluate(() => PP.Store.update(PP.Store.project.objects[0].id, { x: 100 }));
+  await expect.poll(() => page.evaluate(() => PP.Preview.active)).toBe(false);
   expect(consoleProblems).toEqual([]);
 });

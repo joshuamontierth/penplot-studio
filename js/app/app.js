@@ -151,8 +151,27 @@
   };
 
   /** Add objects centered in the work area, scaling down (uniformly, as a group) if too big. */
+  /** Why a plan has nothing to draw, for toasts and the summary. */
+  App.emptyPlanMessage = function (plan) {
+    const objs = S.project.objects;
+    if (!objs.length) return 'Nothing to plot yet - add text, drawings, images or patterns.';
+    if (plan.clipped) return 'Everything is outside the drawable area (the striped zone) - move it onto the paper.';
+    const shown = objs.filter(o => { const L = S.layer(o.layerId); return L && L.visible; });
+    if (!shown.length) return 'All objects are on hidden layers - show a layer to plot it.';
+    return 'The visible objects have no lines to draw.';
+  };
+
+  /** Objects go to the active layer: refuse, as the canvas tools do, when it is hidden or locked. */
+  App.requireEditableLayer = function () {
+    const L = S.activeLayer();
+    if (L && L.visible && !L.locked) return true;
+    PP.UI.toast('The active layer "' + (L ? L.name : '?') + '" is ' + (L && L.locked ? 'locked' : 'hidden') + '. Pick another layer or ' + (L && L.locked ? 'unlock' : 'show') + ' it.', 'warn');
+    return false;
+  };
+
   App.addPlaced = function (objs, opts = {}) {
     if (!objs.length) return [];
+    if (!opts.keepLayers && !App.requireEditableLayer()) return [];
     const area = App.workArea();
     const margin = opts.margin === undefined ? 8 : opts.margin;
     let bb = null;
@@ -199,6 +218,7 @@
     },
     cut() { App.ops.copy(); App.ops.remove(); },
     paste() {
+      if (!App.requireEditableLayer()) return;
       if (!App.clipboard || !App.clipboard.length) return;
       const copies = App.clipboard.map(o => Object.assign({}, o, { id: U.uid('o'), x: o.x + 5, y: o.y - 5, layerId: S.activeLayer().id }));
       App.clipboard = copies.map(o => Object.assign({}, o));
@@ -555,6 +575,7 @@
     }
     if (PP.UI.hasModal()) return;
     if (isTyping(e)) return;
+    if (PP.Preview.active) return; // no editing while previewing (Escape closes the preview)
 
     if (view.tool && view.tool.key && view.tool.key(e)) { e.preventDefault(); view.invalidate(); return; }
 
@@ -567,9 +588,6 @@
       else if (k === 'x') { App.ops.cut(); e.preventDefault(); }
       else if (k === 'v') { App.ops.paste(); e.preventDefault(); }
       else if (k === 'a') { App.ops.selectAll(); e.preventDefault(); }
-      else if (k === 's') { App.files.saveProject(); e.preventDefault(); }
-      else if (k === 'o') { App.files.openProject(); e.preventDefault(); }
-      else if (k === 'e') { PP.UI.openExport(); e.preventDefault(); }
       else if (k === '0') { view.fit(); e.preventDefault(); }
       return;
     }
@@ -616,6 +634,27 @@
     App.setTool('select');
 
     document.addEventListener('keydown', onKeyDown);
+    // an emptied text object has nothing to click: remove it once it is deselected
+    let prevSel = [];
+    S.events.on('selection', () => {
+      const gone = prevSel.filter(id => !S.selection.includes(id)).map(id => S.get(id))
+        .filter(o => o && o.type === 'text' && !String(o.text || '').trim());
+      prevSel = S.selection.slice();
+      if (gone.length) S.remove(gone.map(o => o.id));
+    });
+    // Save / Open / Download work everywhere, even while typing in a field (fields stop keydown propagation).
+    // Capture phase, before those fields; blurring commits the field's value first.
+    window.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const k = e.key.toLowerCase();
+      const fn = k === 's' ? App.files.saveProject : k === 'o' ? App.files.openProject : k === 'e' ? PP.UI.openExport : null;
+      if (!fn) return;
+      e.preventDefault(); // never the browser's own Save page / Open file
+      if (PP.UI.hasModal()) return;
+      e.stopPropagation();
+      if (isTyping({ target: document.activeElement })) document.activeElement.blur();
+      fn();
+    }, true);
     document.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', () => { if (App.view.spaceDown) { App.view.spaceDown = false; } });
 

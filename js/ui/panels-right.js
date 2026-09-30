@@ -382,8 +382,8 @@
         stat('Draw length', U.formatLength(s.drawLen)),
         stat('Pen lifts', String(s.lifts)));
       const warns = [];
-      if (!plan.jobs.length) warns.push(['info', 'Nothing to plot yet. Add text, drawings, images or patterns.']);
-      if (plan.clipped) warns.push(['warn', 'Some lines are outside the drawable area (shown in red) and will be clipped.']);
+      if (!plan.jobs.length) warns.push(['info', PP.App.emptyPlanMessage(plan)]);
+      else if (plan.clipped) warns.push(['warn', 'Some lines are outside the drawable area (shown in red) and will be clipped.']);
       const hiddenWithObjs = S.project.layers.filter(l => !l.visible && S.project.objects.some(o => o.layerId === l.id));
       if (hiddenWithObjs.length) warns.push(['info', hiddenWithObjs.length + ' hidden layer(s) will not be plotted.']);
       const errs = PP.GCode.validateProfile(plan.profile);
