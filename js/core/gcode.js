@@ -94,6 +94,7 @@
   function validateProfile(p) {
     const errs = [];
     const r = reachableRect(p);
+    if (!(p.nozzleMinX >= 0 && p.nozzleMinY >= 0 && p.nozzleMaxX <= p.bedWidth && p.nozzleMaxY <= p.bedDepth)) errs.push('The nozzle limits must stay on the bed (X 0-' + p.bedWidth + ', Y 0-' + p.bedDepth + ' mm).');
     if (r.maxX - r.minX < 10 || r.maxY - r.minY < 10) errs.push('The reachable drawing area is smaller than 10 mm - check bed size, nozzle limits and pen offsets.');
     if (!(p.zLift - p.zDraw >= 1)) errs.push('Z-Lift must be at least 1 mm above Z-Draw (larger Z = bed further from the nozzle), otherwise the pen drags during travel.');
     if (p.zDraw < 0.2) errs.push('Z-Draw must be at least 0.2 mm.');

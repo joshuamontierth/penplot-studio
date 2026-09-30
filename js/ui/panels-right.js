@@ -220,6 +220,21 @@
     sec.body.appendChild(h('div', { class: 'hint' }, 'One layer per pen, plotted top to bottom.'));
     const expanded = new Set();
 
+    let lastNameClick = { id: null, t: 0 };
+    let renaming = null; // layer id being renamed: delayed re-renders wait so the input is not destroyed
+    function startRename(id) {
+      const L = S.project.layers.find(l => l.id === id);
+      const name = L && list.querySelector('.layer-row[data-layer="' + CSS.escape(id) + '"] .layer-name');
+      if (!name) return;
+      const inp = h('input', { class: 'layer-rename', value: L.name });
+      name.replaceWith(inp);
+      renaming = id;
+      inp.focus(); inp.select();
+      const done = () => { renaming = null; const v = inp.value.trim(); if (v && v !== L.name) S.updateLayer(L.id, { name: v }); else render(); };
+      inp.addEventListener('blur', done);
+      inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = L.name; inp.blur(); } });
+    }
+
     function render() {
       U.clear(list);
       const counts = new Map();
@@ -230,26 +245,29 @@
         color.addEventListener('input', () => S.updateLayer(L.id, { color: color.value }, { history: false }));
         color.addEventListener('change', () => { S.checkpoint(); S.updateLayer(L.id, { color: color.value }, { history: false }); });
         const name = h('span', { class: 'layer-name', title: 'Double-click to rename' }, L.name);
-        name.addEventListener('dblclick', () => {
-          const inp = h('input', { class: 'layer-rename', value: L.name });
-          name.replaceWith(inp);
-          inp.focus(); inp.select();
-          const done = () => { const v = inp.value.trim(); if (v && v !== L.name) S.updateLayer(L.id, { name: v }); else render(); };
-          inp.addEventListener('blur', done);
-          inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = L.name; inp.blur(); } });
-        });
+        name.addEventListener('dblclick', () => startRename(L.id));
         const eye = UI.iconBtn(L.visible ? 'eye' : 'eyeoff', L.visible ? 'Hide (hidden layers are not plotted)' : 'Show', (e) => { e.stopPropagation(); S.updateLayer(L.id, { visible: !L.visible }); }, { size: 15, cls: L.visible ? '' : 'off' });
         const lock = UI.iconBtn(L.locked ? 'lock' : 'unlock', L.locked ? 'Unlock' : 'Lock (prevent edits)', (e) => { e.stopPropagation(); S.updateLayer(L.id, { locked: !L.locked }); }, { size: 15, cls: L.locked ? 'on' : 'off' });
         const more = UI.iconBtn('settings', 'Layer pen settings', (e) => { e.stopPropagation(); if (expanded.has(L.id)) expanded.delete(L.id); else expanded.add(L.id); render(); }, { size: 15 });
-        const row = h('div', { class: 'layer-row' + (active ? ' active' : '') },
+        const row = h('div', { class: 'layer-row' + (active ? ' active' : ''), dataset: { layer: L.id } },
           h('span', { class: 'layer-idx' }, String(i + 1)), color, name, h('span', { class: 'layer-count' }, String(counts.get(L.id) || 0)), eye, lock, more);
-        row.addEventListener('click', (e) => { if (e.target === color || e.target.closest('button') || e.target.tagName === 'INPUT') return; S.setActiveLayer(L.id); render(); });
+        row.addEventListener('click', (e) => {
+          if (e.target === color || e.target.closest('button') || e.target.tagName === 'INPUT') return;
+          // The first click re-renders the list, so the browser's dblclick never reaches the new name span:
+          // detect the second click on the same layer name here instead
+          if (e.target.closest('.layer-name')) {
+            const now = performance.now();
+            if (lastNameClick.id === L.id && now - lastNameClick.t < 450) { lastNameClick.id = null; startRename(L.id); return; }
+            lastNameClick = { id: L.id, t: now };
+          }
+          S.setActiveLayer(L.id); render();
+        });
         list.appendChild(row);
         if (expanded.has(L.id)) {
           const p = PP.App.profile();
           const box = h('div', { class: 'layer-settings' },
-            UI.numberField({ label: 'Z-Draw override', unit: 'mm', value: U.isNum(L.zDraw) ? L.zDraw : '', min: U.round(p.zDraw - 4, 2), max: U.round(p.zLift - 0.5, 2), step: 0.1, title: 'Leave empty to use the printer Z-Draw (' + p.zDraw + ' mm). Allowed ' + U.round(p.zDraw - 4, 2) + '..' + U.round(p.zLift - 0.5, 2) + ' mm.', onChange: (v) => S.updateLayer(L.id, { zDraw: PP.GCode.safeDrawZ(p, v) }) }),
-            UI.numberField({ label: 'Draw speed override', unit: 'mm/s', value: U.isNum(L.speed) ? L.speed : '', min: 1, max: 500, step: 1, title: 'Leave empty to use the printer draw speed (' + p.drawSpeed + ' mm/s)', onChange: (v) => S.updateLayer(L.id, { speed: v }) }),
+            UI.numberField({ label: 'Z-Draw override', unit: 'mm', value: U.isNum(L.zDraw) ? L.zDraw : '', min: U.round(PP.GCode.minSafeDrawZ(p), 2), max: U.round(p.zLift - 0.5, 2), step: 0.1, allowEmpty: true, title: 'Leave empty to use the printer Z-Draw (' + p.zDraw + ' mm). Allowed ' + U.round(PP.GCode.minSafeDrawZ(p), 2) + '..' + U.round(p.zLift - 0.5, 2) + ' mm.', onChange: (v) => S.updateLayer(L.id, { zDraw: v === null ? null : PP.GCode.safeDrawZ(p, v) }) }),
+            UI.numberField({ label: 'Draw speed override', unit: 'mm/s', value: U.isNum(L.speed) ? L.speed : '', min: 1, max: 500, step: 1, allowEmpty: true, title: 'Leave empty to use the printer draw speed (' + p.drawSpeed + ' mm/s)', onChange: (v) => S.updateLayer(L.id, { speed: v }) }),
             UI.numberField({ label: 'Pen width (display)', unit: 'mm', value: L.penWidth || 0.5, min: 0.05, max: 5, step: 0.05, decimals: 2, onChange: (v) => S.updateLayer(L.id, { penWidth: v }) }),
             h('div', { class: 'btn-row' },
               UI.btn('Clear overrides', () => S.updateLayer(L.id, { zDraw: null, speed: null }), { small: true }),
@@ -261,17 +279,12 @@
                 if (n && !(await UI.confirm('Delete layer', 'Delete "' + L.name + '" and its ' + n + ' object(s)?', 'Delete', true))) return;
                 S.removeLayer(L.id);
               }, { size: 15, cls: 'danger' })));
-          // empty-value handling for overrides
-          box.querySelectorAll('input.num').forEach((inp, idx) => {
-            if (idx > 1) return;
-            inp.addEventListener('change', () => { if (inp.value === '') S.updateLayer(L.id, idx === 0 ? { zDraw: null } : { speed: null }); });
-          });
           list.appendChild(box);
         }
       });
     }
     S.events.on('change', (k) => { if (k !== 'transform') renderSoon(); });
-    const renderSoon = U.debounce(render, 50);
+    const renderSoon = U.debounce(() => { if (!renaming) render(); }, 50);
     PP.App.events.on('profile', renderSoon);
     render();
   }

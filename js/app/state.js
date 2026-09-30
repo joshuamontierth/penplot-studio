@@ -301,13 +301,23 @@
       app: 'PenPlot Studio', format: 1,
       name: data.name || 'Untitled plot',
       layers,
-      objects: data.objects.filter(o => o && o.type).map(o => Object.assign({ x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 }, o, { layerId: layerIds.has(o.layerId) ? o.layerId : layers[0].id })),
+      objects: data.objects.filter(o => o && typeof o === 'object' && o.type).map(o => {
+        const out = Object.assign({}, o, { layerId: layerIds.has(o.layerId) ? o.layerId : layers[0].id });
+        for (const [k, def] of [['x', 0], ['y', 0], ['rotation', 0], ['scaleX', 1], ['scaleY', 1]]) out[k] = Number.isFinite(out[k]) ? out[k] : def;
+        if (!out.id) out.id = U.uid('o');
+        return out;
+      }),
       activeLayerId: layerIds.has(data.activeLayerId) ? data.activeLayerId : layers[0].id,
       paper: Object.assign(base.paper, data.paper || {}),
     };
+    // drop objects whose geometry cannot be built (a hand-edited or corrupt file), so one bad object cannot break
+    // rendering, planning and - through autosave - every later session
+    const before = S.project.objects.length;
+    S.project.objects = S.project.objects.filter(o => { try { PP.Objects.world(o); return true; } catch (e) { return false; } });
     S.selection = [];
     changed('load');
     events.emit('selection');
+    return { dropped: before - S.project.objects.length };
   };
 
   S.reset = function () {
@@ -322,12 +332,18 @@
   // Autosave
   // ---------------------------------------------------------------------------
   S.autosaveEnabled = true;
-  const autosave = U.debounce(() => {
+  let savePending = false;
+  const saveNow = () => {
+    savePending = false;
     if (!PP.Storage || !S.autosaveEnabled) return;
     try {
       PP.Storage.set('autosave', S.serialize());
     } catch (e) { console.warn('Autosave failed', e); }
-  }, 800);
+  };
+  const debouncedSave = U.debounce(() => { if (savePending) saveNow(); }, 800);
+  const autosave = () => { savePending = true; debouncedSave(); };
+  /** Write a pending autosave right away (called when the page is hidden or closed). */
+  S.flushAutosave = () => { if (savePending) saveNow(); };
 
   S.restoreAutosave = async function () {
     if (!PP.Storage) return false;

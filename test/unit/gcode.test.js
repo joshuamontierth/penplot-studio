@@ -84,6 +84,7 @@ describe('validateProfile', () => {
     ['park outside the safe zone', { parkX: 20 }, /Park position/],
     ['end outside the safe zone', { endY: 40 }, /End position/],
     ['a drawable area under 10 mm', { nozzleMinX: 250 }, /smaller than 10 mm/],
+    ['nozzle limits beyond the bed', { nozzleMaxX: 100000 }, /stay on the bed/],
   ])('rejects %s', (_name, patch, re) => {
     expect(invalid(patch).some((e) => re.test(e))).toBe(true);
   });

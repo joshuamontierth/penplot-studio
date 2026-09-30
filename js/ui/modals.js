@@ -256,6 +256,7 @@
           h('div', { class: 'grow' }, h('b', null, o.name), h('small', null, o.label + ' • ' + res.stats.lines.toLocaleString() + ' lines • ' + U.formatDuration(res.stats.time) + ' • ' + Math.round(res.text.length / 1024) + ' KB')),
           UI.btn('Download', async () => {
             if (!sim.ok && !(await UI.confirm('Safety check failed', 'The simulator found ' + sim.errors.length + ' problem(s) in this file that could crash the printer or ruin the plot. Download anyway?', 'Download anyway', true))) return;
+            if (sim.ok && errs.length && !(await UI.confirm('Printer settings have problems', errs.join(' ') + ' Download anyway?', 'Download anyway', true))) return;
             U.downloadText(o.name, res.text, 'text/x-gcode');
             UI.toast('Saved ' + o.name + ' - copy it to the root of the printer SD card.', 'info', 5000);
           }, { primary: sim.ok, small: true, icon: 'download' }),

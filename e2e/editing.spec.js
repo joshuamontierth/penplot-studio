@@ -329,3 +329,39 @@ test('dropping an SVG file onto the canvas imports its paths', async ({ page, co
   expect(await page.evaluate(() => document.querySelectorAll('.modal-back').length)).toBe(0);
   expect(consoleProblems).toEqual([]);
 });
+
+test('layer rename by real double-click, locked objects stay selectable, overrides clear', async ({
+  page,
+  consoleProblems,
+}) => {
+  // rename: the first click re-renders the list, the second must still open the editor
+  await page.locator('#right-panel .layer-row .layer-name').first().dblclick();
+  const input = page.locator('#right-panel .layer-rename');
+  await expect(input).toBeVisible();
+  await input.fill('Black pen');
+  await input.press('Enter');
+  await expect(page.locator('#right-panel .layer-row .layer-name').first()).toHaveText('Black pen');
+
+  // lock an object, deselect, click it again: it is selected (not moved) and can be unlocked
+  const target = (await objects(page)).find((o) => o.text === 'Made with a pen plotter');
+  const c = [(target.bbox.minX + target.bbox.maxX) / 2, (target.bbox.minY + target.bbox.maxY) / 2];
+  await clickOnBed(page, ...c);
+  await page.getByRole('button', { name: 'Lock', exact: true }).click();
+  await clickOnBed(page, 240, 240);
+  expect(await selection(page)).toEqual([]);
+  await clickOnBed(page, ...c);
+  expect(await selection(page)).toEqual([target.id]);
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  expect((await objects(page)).find((o) => o.id === target.id).x).toBe(target.x);
+
+  // a layer Z override can be cleared by emptying the field
+  await page.getByRole('button', { name: 'Layer pen settings' }).first().click();
+  const z = page.locator('#right-panel .layer-settings .field', { hasText: 'Z-Draw override' }).locator('input');
+  await z.fill('15');
+  await z.press('Enter');
+  expect(await page.evaluate(() => PP.Store.project.layers[0].zDraw)).toBe(15);
+  await z.fill('');
+  await z.press('Enter');
+  expect(await page.evaluate(() => PP.Store.project.layers[0].zDraw)).toBeNull();
+  expect(consoleProblems).toEqual([]);
+});

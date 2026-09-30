@@ -34,3 +34,23 @@ describe('module loading', () => {
     expect(window.PPTest).toBeTruthy();
   });
 });
+
+describe('project loading', () => {
+  it('drops objects whose geometry cannot be built and keeps the rest', () => {
+    const S = window.PP.Store;
+    const { dropped } = S.load({
+      layers: [{ id: 'a', name: 'x' }],
+      objects: [
+        { type: 'path', layerId: 'a' }, // no paths: used to break every render
+        { type: 'path', layerId: 'a', paths: [[0, 0, 10, 0]], x: 'oops', scaleX: null },
+        { type: 'shape', shape: 'rect', w: 10, h: 10, layerId: 'missing' },
+      ],
+    });
+    expect(dropped).toBe(1);
+    expect(S.project.objects).toHaveLength(2);
+    const [path, rect] = S.project.objects;
+    expect(path).toMatchObject({ x: 0, scaleX: 1 });
+    expect(rect.layerId).toBe('a');
+    expect(() => window.PP.App.buildPlan()).not.toThrow();
+  });
+});

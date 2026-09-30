@@ -47,6 +47,12 @@ describe('holder-attached hardening', () => {
     expect(codes(withAttached(line))).toContain(code);
   });
 
+  it('rejects nozzle moves off the plate even when the configured limits allow them', () => {
+    const wide = GC.normalizeProfile({ ...window.PPTest.X1C, nozzleMaxX: 100000 });
+    const text = withAttached('G1 X283 Y150 F12000');
+    expect(SIM.simulate(text, wide).errors.map((e) => e.code)).toContain('xy-range');
+  });
+
   it('only warns about unknown commands before the holder is attached', () => {
     const r = SIM.simulate('G90\nM9999\nG28', P, { expectedPauses: 0 });
     expect(r.errors.map((e) => e.code)).not.toContain('unknown-attached');

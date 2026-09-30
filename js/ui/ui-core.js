@@ -139,7 +139,9 @@
   // Form controls
   // ---------------------------------------------------------------------------
   /** Labeled number input with optional slider. */
-  function numberField({ label, value, min, max, step = 1, unit, slider = false, onInput, onChange, title, decimals }) {
+  /** allowEmpty: an emptied field emits onChange(null) (e.g. "use the default") instead of reverting. */
+  function numberField({ label, value, min, max, step = 1, unit, slider = false, onInput, onChange, title, decimals, allowEmpty = false }) {
+    let current = value; // last committed value: an invalid entry reverts to this, not to the initial value
     const fmtV = (v) => decimals !== undefined ? U.fmt(v, decimals) : String(v);
     const num = h('input', { type: 'number', class: 'num', value: fmtV(value), min, max, step, title });
     const wrap = h('div', { class: 'field' + (slider ? ' field-slider' : '') });
@@ -161,15 +163,17 @@
     num.addEventListener('input', () => { const v = parse(num.value); if (v !== null && range) range.value = v; emit(v, false); });
     num.addEventListener('change', () => {
       let v = parse(num.value);
-      if (v === null) { num.value = fmtV(value); return; }
+      if (v === null && allowEmpty && num.value.trim() === '') { current = ''; if (onChange) onChange(null); return; }
+      if (v === null) { num.value = fmtV(current); return; }
       if (min !== undefined && v < min) v = min;
       if (max !== undefined && v > max) v = max;
       num.value = fmtV(v);
       if (range) range.value = v;
+      current = v;
       emit(v, true);
     });
     num.addEventListener('keydown', (e) => { if (e.key === 'Enter') num.blur(); e.stopPropagation(); });
-    wrap.setValue = (v) => { if (document.activeElement !== num) num.value = fmtV(v); if (range) range.value = v; };
+    wrap.setValue = (v) => { current = v; if (document.activeElement !== num) num.value = fmtV(v); if (range) range.value = v; };
     wrap.input = num;
     return wrap;
   }

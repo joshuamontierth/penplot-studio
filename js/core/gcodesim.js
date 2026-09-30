@@ -257,6 +257,8 @@
           const tz = hasZ ? (abs ? P.Z : z + P.Z) : z;
           if (!(F > 0)) err(ln, 'no-feed', 'Move without a feed rate.');
           const feed = F > 0 ? F / 60 : 10;
+          // independent of the configured limits (which could be wrong): with the holder on, stay over the plate
+          if (attached && (tx < -EPS || tx > W + EPS || ty < -EPS || ty > D + EPS)) err(ln, 'xy-range', 'Nozzle move to X' + tx.toFixed(2) + ' Y' + ty.toFixed(2) + ' is off the plate with the pen holder attached.');
           if (tx < p.nozzleMinX - EPS || tx > p.nozzleMaxX + EPS || ty < p.nozzleMinY - EPS || ty > p.nozzleMaxY + EPS) {
             if (attached) err(ln, 'xy-limit', 'Nozzle move to X' + tx.toFixed(2) + ' Y' + ty.toFixed(2) + ' leaves the safe zone (X ' + p.nozzleMinX + '..' + p.nozzleMaxX + ', Y ' + p.nozzleMinY + '..' + p.nozzleMaxY + ') with the pen holder attached.');
             else if (tx < -20 || tx > W + 20 || ty < -20 || ty > D + 20) err(ln, 'xy-range', 'Nozzle move to X' + tx.toFixed(2) + ' Y' + ty.toFixed(2) + ' is outside the printer.');

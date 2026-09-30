@@ -27,7 +27,14 @@
     const list = PP.GCode.BUILTIN_PROFILES.map(b => Object.assign({}, b, profStore.overrides[b.id] || {}, { id: b.id, builtin: true }));
     return list.concat(profStore.custom.map(c => Object.assign({}, c, { builtin: false })));
   }
-  function saveProfiles() { PP.Storage.setLocal('profiles', profStore); profCache = null; events.emit('profile'); if (App.view) App.view.invalidate(); }
+  function saveProfiles() {
+    const old = profCache;
+    PP.Storage.setLocal('profiles', profStore); profCache = null; events.emit('profile');
+    if (!App.view) return;
+    // refit when the bed size changed (edited, or the active profile was deleted), otherwise just redraw
+    const p = App.profile();
+    if (old && (old.bedWidth !== p.bedWidth || old.bedDepth !== p.bedDepth)) App.view.fit(); else App.view.invalidate();
+  }
 
   App.profiles = allProfiles;
   App.profile = function () {
@@ -311,9 +318,9 @@
       if (!file) return;
       try {
         const data = JSON.parse(await U.readFile(file, 'text'));
-        S.load(data);
+        const { dropped } = S.load(data);
         App.view.fit();
-        PP.UI.toast('Opened "' + (S.project.name || file.name) + '"', 'info');
+        PP.UI.toast('Opened "' + (S.project.name || file.name) + '"' + (dropped ? ' - skipped ' + dropped + ' damaged object(s)' : ''), dropped ? 'warn' : 'info');
       } catch (e) { PP.UI.toast('Could not open project: ' + e.message, 'error'); }
     },
     async importSVG(file, opts = {}) {
@@ -625,7 +632,9 @@
       const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
       if (files.length) App.files.handleFiles(files);
     });
-    window.addEventListener('beforeunload', () => { /* autosave covers state */ });
+    // autosave is debounced: write the last edit before the tab is hidden or closed
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') S.flushAutosave(); });
+    window.addEventListener('pagehide', () => S.flushAutosave());
 
     // Preload the default font, restore uploaded fonts and the last session
     PP.Fonts.load(PP.Fonts.DEFAULT).catch((e) => PP.UI.toast('Could not load the Hershey fonts (' + e.message + '). Check your internet connection - text needs them.', 'error', 8000));

@@ -534,7 +534,9 @@
     down(e, w, view) {
       const hh = view.hitHandle(w.sx, w.sy);
       if (hh) { this.startTransform(hh, w, view); return; }
-      const o = view.pick(w);
+      let o = view.pick(w);
+      // a locked object can still be clicked to select it (it won't move), so it can be unlocked again
+      if (!o) { const lo = view.pick(w, false); const L = lo && S.layer(lo.layerId); if (lo && lo.locked && L && !L.locked) o = lo; }
       if (o) {
         if (e.shiftKey) { S.select(o.id, true); if (!S.isSelected(o.id)) { this.op = null; return; } }
         else if (!S.isSelected(o.id)) S.select(o.id);
