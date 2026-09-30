@@ -134,8 +134,11 @@
     };
 
     const doPause = (ln, kind) => {
-      const removing = /remove the pen holder/i.test(lastComment);
-      const inspect = !removing && /\bmeasure\b/i.test(lastComment) && !attached;
+      // PenPlot's generator marks each pause with "; PP_PAUSE <action>" right before it; other files fall back to
+      // reading the human comment (which a layer name can mislead)
+      const mk = /^PP_PAUSE (attach|swap|remove|inspect)$/.exec(lastComment);
+      const removing = mk ? mk[1] === 'remove' : /remove the pen holder/i.test(lastComment);
+      const inspect = mk ? mk[1] === 'inspect' : !removing && /\bmeasure\b/i.test(lastComment) && !attached;
       const action = removing ? 'remove' : inspect ? 'inspect' : (attached ? 'swap' : 'attach');
       pauses.push({ line: ln, x, y, z, kind, action });
       if (penDown) err(ln, 'pause-pen-down', 'Pause while the pen is down.');
@@ -162,7 +165,15 @@
       if (pl.bad) { err(ln, 'parse', pl.bad + ' in "' + raw.trim().slice(0, 60) + '"'); if (pl.cmd === '?') continue; }
       const P = pl.params || {};
       const cmd = pl.cmd;
-      if (!KNOWN.has(cmd)) warn(ln, 'unknown', 'Unknown command ' + cmd + ' (the printer may ignore it).');
+      // Commands the simulator cannot follow are errors while the holder is attached: arcs, bed probing, tool
+      // changes / AMS (filament cut: the collision the mount designer warns about), soft endstops off
+      if (attached) {
+        if (cmd === 'G2' || cmd === 'G3') err(ln, 'arc', 'Arc move (' + cmd + ') with the pen holder attached - the simulator cannot check its path.');
+        else if (/^G29/.test(cmd)) err(ln, 'probe-attached', 'Bed probing (' + cmd + ') with the pen holder attached.');
+        else if (cmd[0] === 'T' || /^M62[0-3]$/.test(cmd)) err(ln, 'tool-change', 'Tool change / AMS command (' + cmd + ') with the pen holder attached - it can cut filament and crash the module.');
+        else if (cmd === 'M221' && ('X' in P || 'Y' in P || 'Z' in P)) err(ln, 'soft-endstops', 'M221 with X/Y/Z changes soft endstops while the pen holder is attached.');
+        else if (!KNOWN.has(cmd)) err(ln, 'unknown-attached', 'Unknown command ' + cmd + ' with the pen holder attached - it may move the toolhead.');
+      } else if (!KNOWN.has(cmd)) warn(ln, 'unknown', 'Unknown command ' + cmd + ' (the printer may ignore it).');
       if (steppersOff && (cmd === 'G0' || cmd === 'G1')) err(ln, 'steppers-off', 'Move after the motors were disabled - position is lost.');
 
       switch (cmd) {

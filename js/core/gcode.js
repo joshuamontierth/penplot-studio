@@ -39,7 +39,9 @@
     safeStart: true,
     pauseForAttach: true,
     pauseCommand: 'M400 U1',
-    parkX: 152, parkY: 70,
+    // The firmware moves the toolhead to the purge chute (back-left) during every M400 U1 pause and back on
+    // resume, so park close to it: the move it makes with the holder attached stays short.
+    parkX: 80, parkY: 245,
     endPause: true,
     endX: 152, endY: 250,
     layerPause: true,
@@ -117,6 +119,9 @@
     return U.clamp(z, minSafeDrawZ(p), p.zLift - 0.5);
   }
 
+  /** Text for a G-code comment: one line, so names can never inject commands. */
+  const c1 = (v) => String(v).replace(/[\r\n]+/g, ' ');
+
   function bambuSafeStart(L) {
     // From Bambu's official X1 start G-code: drop the bed a little (probing moves
     // that stop on contact) so the nozzle can never be below the plate during homing.
@@ -174,12 +179,17 @@
 
     // --- header
     const date = opts.date || new Date();
+    L('; HEADER_BLOCK_START');
+    L('; ' + APP + ' ' + VERSION);
+    L('; model printing time: ' + fmtHMS(totalTime) + '; total estimated time: ' + fmtHMS(grand));
+    L('; total layer number: ' + Math.max(1, jobs.length));
+    L('; HEADER_BLOCK_END');
     L('; ' + '='.repeat(60));
     L('; ' + APP + ' ' + VERSION + ' - pen plotter G-code');
     L('; Generated: ' + date.toISOString().replace('T', ' ').slice(0, 19) + ' UTC');
-    if (opts.title) L('; Design: ' + String(opts.title).replace(/[\r\n]+/g, ' '));
-    L('; Printer profile: ' + p.name);
-    if (p.mount) L('; Pen mount: ' + p.mount);
+    if (opts.title) L('; Design: ' + c1(opts.title));
+    L('; Printer profile: ' + c1(p.name));
+    if (p.mount) L('; Pen mount: ' + c1(p.mount));
     L('; Pen offset from nozzle: X' + (p.penOffsetX >= 0 ? '+' : '') + f(p.penOffsetX) + ' Y' + (p.penOffsetY >= 0 ? '+' : '') + f(p.penOffsetY) + ' mm');
     L('; Z-Draw: ' + f(p.zDraw) + ' mm   Z-Lift: ' + f(p.zLift) + ' mm   Attach height: ' + f(p.zAttach) + ' mm');
     L('; Draw speed: ' + f(p.drawSpeed) + ' mm/s   Travel: ' + f(p.travelSpeed) + ' mm/s   Z: ' + f(p.zSpeed) + ' mm/s   Accel: ' + f(p.accel) + ' mm/s^2');
@@ -188,11 +198,6 @@
     if (dry) L('; *** DRY RUN: the pen never goes below Z-Lift - nothing will be drawn ***');
     L('; Coordinates below are NOZZLE coordinates (pen position minus pen offset).');
     L('; ' + '='.repeat(60));
-    L('; HEADER_BLOCK_START');
-    L('; ' + APP + ' ' + VERSION);
-    L('; model printing time: ' + fmtHMS(totalTime) + '; total estimated time: ' + fmtHMS(grand));
-    L('; total layer number: ' + Math.max(1, jobs.length));
-    L('; HEADER_BLOCK_END');
     L('');
 
     // --- progress tracking
@@ -238,6 +243,7 @@
       L('; PAUSE: attach the pen holder now, check the pen height,');
       L(';        then press RESUME on the printer screen.');
       L('; ' + '*'.repeat(58));
+      L('; PP_PAUSE attach');
       L(p.pauseCommand || 'M400 U1');
       L('G90 ; re-assert absolute mode after resume');
     }
@@ -256,13 +262,14 @@
       const drawF = Math.round((j.drawSpeed || p.drawSpeed) * 60);
       const est = jobEst[ji];
       const pauseHere = j.pauseBefore !== undefined ? j.pauseBefore : (ji > 0 && p.layerPause && jobs.length > 1);
-      L('; ===== Layer ' + (ji + 1) + '/' + jobs.length + ': ' + String(j.name || 'Layer').replace(/[\r\n]+/g, ' ') + (j.color ? ' (' + j.color + ')' : '') + ' =====');
-      if (j.comment) L('; ' + j.comment);
+      L('; ===== Layer ' + (ji + 1) + '/' + jobs.length + ': ' + c1(j.name || 'Layer') + (j.color ? ' (' + c1(j.color) + ')' : '') + ' =====');
+      if (j.comment) L('; ' + c1(j.comment));
       if (pauseHere) {
         L('G1 Z' + f(p.zAttach) + ' F' + zF + ' ; lower the bed for pen change');
         L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF + ' ; park toolhead');
         L('M400');
-        L('; PAUSE: ' + (j.pauseMessage || ('change to the pen for layer "' + (j.name || ji + 1) + '"')) + ', then press RESUME');
+        L('; PAUSE: ' + c1(j.pauseMessage || ('change to the pen for layer "' + (j.name || ji + 1) + '"')) + ', then press RESUME');
+        L('; PP_PAUSE swap');
         L(p.pauseCommand || 'M400 U1');
         L('G90');
         L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
@@ -300,6 +307,7 @@
       L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF + ' ; park toolhead');
       L('M400');
       L('; PAUSE: remove the pen holder now, then press RESUME to finish');
+      L('; PP_PAUSE remove');
       L(p.pauseCommand || 'M400 U1');
       L('G90');
     }
@@ -395,9 +403,6 @@
     if (totalW > R.maxX - R.minX || totalH > R.maxY - R.minY) {
       throw new Error('The calibration grid (' + Math.round(totalW) + ' x ' + Math.round(totalH) + ' mm) does not fit the reachable area. Use fewer Z values or speeds, or a smaller cell.');
     }
-    // Title (drawn at the profile Z-Draw)
-    const title = textPolys(opts.type === 'compact' ? 'Z-DRAW TEST' : 'Z-DRAW x SPEED TEST', 4, (R.minX + R.maxX) / 2, y0 + 4, 'center');
-    jobs.push({ name: 'Title', polys: O.order(title, null, { joinTol: 0.05 }), pauseBefore: false, comment: 'Title drawn at the profile Z-Draw' });
     // Draw lightest pressure (highest Z) first
     const order = zs.map((z, i) => ({ z, i })).sort((a, b) => b.z - a.z);
     for (const { z, i } of order) {
@@ -411,6 +416,9 @@
         jobs.push({ name: 'Z' + U.fmt(z, 2) + ' @ ' + U.fmt(sp, 0) + ' mm/s', polys: O.order(all, null, { joinTol: 0.05 }), zDraw: z, drawSpeed: sp, pauseBefore: false });
       });
     }
+    // Title last, at the profile Z-Draw: if that height is wrong, the cells above have already shown it
+    const title = textPolys(opts.type === 'compact' ? 'Z-DRAW TEST' : 'Z-DRAW x SPEED TEST', 4, (R.minX + R.maxX) / 2, y0 + 4, 'center');
+    jobs.push({ name: 'Title', polys: O.order(title, null, { joinTol: 0.05 }), pauseBefore: false, comment: 'Title drawn at the profile Z-Draw' });
     legend.push('Columns (left to right): Z-Draw = ' + zs.map(z => U.fmt(z, 2)).join(', ') + ' mm');
     if (speeds.length > 1) legend.push('Rows (top to bottom): speed = ' + speeds.map(v => U.fmt(v, 0)).join(', ') + ' mm/s');
     legend.push('Cells are drawn from the highest Z (lightest pressure) to the lowest. Stop the print if the pen starts tearing the paper.');
@@ -424,6 +432,8 @@
    * spot so you can measure how far the cross is from the nozzle tip.
    * Works whatever the current offset setting is (only nozzle coordinates are used).
    */
+  const MEASURE_S = 180; // offset finder: seconds the bare nozzle waits over the cross
+
   function offsetFinder(profileIn) {
     const p = normalizeProfile(profileIn);
     const f = (v) => U.fmt(v, 3);
@@ -435,9 +445,9 @@
     const out = [];
     const L = (s) => out.push(s);
     L('; ' + APP + ' ' + VERSION + ' - OFFSET FINDER');
-    L('; Printer profile: ' + p.name);
+    L('; Printer profile: ' + c1(p.name));
     L('; The pen draws a cross + circle while the NOZZLE is at X' + f(nx) + ' Y' + f(ny) + '.');
-    L('; Then you remove the pen holder and the bare nozzle parks 3 mm above that same point.');
+    L('; Then you remove the pen holder, and the bare nozzle waits ' + MEASURE_S + ' s at Z-Lift over that same point.');
     L('; Measure from the nozzle tip to the center of the cross:');
     L(';   pen offset X = +distance if the cross is to the RIGHT of the nozzle, - if LEFT');
     L(';   pen offset Y = +distance if the cross is BEHIND the nozzle, - if IN FRONT');
@@ -446,6 +456,9 @@
     L('M83');
     L('M104 S0');
     L('M140 S0');
+    if (isBambu) { L('M106 S0'); L('M106 P2 S0'); L('M106 P3 S0'); } else L('M107');
+    L('M220 S100');
+    if (p.accel > 0) L('M204 S' + Math.round(p.accel));
     if (isBambu && p.safeStart) bambuSafeStart(L);
     L('G28 ; home - pen holder NOT attached');
     L('G90');
@@ -453,6 +466,7 @@
     L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF);
     L('M400');
     L('; PAUSE: attach the pen holder with the pen, then press RESUME');
+    L('; PP_PAUSE attach');
     L(pause);
     L('G90');
     L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
@@ -477,14 +491,16 @@
     L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF);
     L('M400');
     L('; PAUSE: remove the pen holder now (keep the paper in place), then press RESUME');
+    L('; PP_PAUSE remove');
     L(pause);
     L('G90');
+    // A timed wait, not a pause: the firmware moves the toolhead to the purge chute while paused. Z-Lift is
+    // safe even if the holder was left on (the pen tip is then above the paper, as for any travel move).
     L('G1 X' + f(nx) + ' Y' + f(ny) + ' F' + travelF + ' ; bare nozzle over the reference point');
-    L('G1 Z3 F' + zF + ' ; nozzle 3 mm above the paper');
+    L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; nozzle at Z-Lift');
     L('M400');
-    L('; PAUSE: measure from the nozzle tip to the center of the cross, then press RESUME');
-    L(pause);
-    L('G90');
+    L('; MEASURE NOW: nozzle tip to the center of the cross (' + MEASURE_S + ' s)');
+    L((isBambu ? 'M400 S' : 'G4 S') + MEASURE_S);
     L('G1 Z' + f(Math.max(p.zLift, p.zEnd)) + ' F' + zF);
     L('G1 X' + f(p.endX) + ' Y' + f(p.endY) + ' F' + travelF);
     L('M400');
@@ -494,8 +510,8 @@
       nozzle: { x: nx, y: ny },
       legend: [
         'The pen draws a 16 mm cross with a small circle while the nozzle sits at X' + U.fmt(nx, 1) + ' Y' + U.fmt(ny, 1) + '.',
-        'At the second pause, remove the pen holder. The bare nozzle then parks 3 mm above that same point and pauses.',
-        'Measure from the nozzle tip to the center of the cross: right of the nozzle = +X, left = -X, behind (toward the back) = +Y, in front = -Y.',
+        'At the second pause, remove the pen holder. After Resume the bare nozzle moves over the same point at Z-Lift (' + U.fmt(p.zLift, 1) + ' mm) and waits ' + Math.round(MEASURE_S / 60) + ' minutes.',
+        'During that wait, measure from the nozzle tip to the center of the cross (a square or a ruler held upright helps): right of the nozzle = +X, left = -X, behind (toward the back) = +Y, in front = -Y.',
         'Enter those numbers as Pen offset X / Y in Printer settings. Expected for the Falu mount: about X -28, Y -35.',
       ],
     };

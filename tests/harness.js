@@ -653,9 +653,9 @@
           if (type !== 'frame') ok(sim.stats.maxZ <= P.zMax + 1e-6 && sim.stats.minDrawZ >= GC.minSafeDrawZ(P) - 1e-6 && sim.stats.minDrawZ >= 0.5, 'calibration ' + type + ' Z range safe on ' + bp.name, 'pen-down min ' + sim.stats.minDrawZ + ', max Z ' + sim.stats.maxZ);
         }
         const of = GC.offsetFinder(P);
-        const s = SIM.simulate(of.text, P, { expectedPauses: 3 });
+        const s = SIM.simulate(of.text, P, { expectedPauses: 2 });
         ok(s.ok && s.strokes.length === 3, 'offset finder on ' + bp.name, s.errors.map(SIM.fmtMsg).join(' | ') + ' strokes=' + s.strokes.length);
-        ok(s.pauses.map(p => p.action).join(',') === 'attach,remove,inspect', 'offset finder pause sequence on ' + bp.name, s.pauses.map(p => p.action).join(','));
+        ok(s.pauses.map(p => p.action).join(',') === 'attach,remove', 'offset finder pause sequence on ' + bp.name, s.pauses.map(p => p.action).join(','));
       } }));
     };
 

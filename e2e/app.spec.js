@@ -54,10 +54,11 @@ test('first launch opens the help dialog once', async ({ page, consoleProblems }
   await help.getByRole('tab', { name: 'Calibration' }).click();
   for (const t of [
     '0. Before you start',
-    '1. Frame test as a dry run, no pen',
-    '2. Offset finder',
+    '1. Empty run',
+    '2. Frame test with the holder',
     '3. Z test',
-    '4. Frame test with a pen',
+    '4. Offset finder',
+    '5. Frame test with a pen',
   ]) {
     await expect(help.getByRole('heading', { name: new RegExp('^' + t.replace(/[.()]/g, '\\$&')) })).toBeVisible();
   }

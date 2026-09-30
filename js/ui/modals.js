@@ -275,13 +275,14 @@
         h('li', null, 'Copy the .gcode file to the ', h('b', null, 'root of the SD card'), ' (no folders, simple file name) and put the card back in the printer.'),
         h('li', null, 'Tape the paper down where the canvas shows it. Do ', h('b', null, 'not'), ' attach the pen holder yet.'),
         h('li', null, 'On the printer screen: ', h('b', null, 'Print files → SD card'), ' → pick the file → Print.'),
-        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null),
-        p.pauseForAttach ? h('li', null, 'Clip the pen holder onto the toolhead, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '.') : null,
+        x1c ? h('li', null, 'Before plotting, turn off AI monitoring (spaghetti, purge chute pile-up and nozzle clumping detection) and ', h('b', null, 'Auto-recovery from step loss'), ' in the printer settings: they can pause or re-home the toolhead with the holder attached.') : null,
+        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? ' While paused the firmware moves the toolhead to the purge chute (back left); it returns on Resume.' : null),
+        p.pauseForAttach ? h('li', null, 'Clip the pen holder onto the toolhead where it stops, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '. Do not jog the toolhead with the holder on.') : null,
         plan.jobs.length > 1 && mode === 'combined' && p.layerPause ? h('li', null, 'Between layers the printer pauses again: swap to the next pen color and press Resume.') : null,
         p.endPause
           ? h('li', null, 'At the end the bed lowers and the printer pauses one last time: ', h('b', null, 'remove the pen holder'), ', then press Resume to finish. Never let a normal 3D print start with the module attached.')
           : h('li', null, 'When it finishes the bed lowers and the toolhead moves to the back. Remove the pen holder before your next 3D print.')),
-      h('p', { class: 'hint' }, 'Tip: run a Dry run first without the pen to confirm the toolhead stays over your paper.'));
+      h('p', { class: 'hint' }, 'Tip: run a Dry run first without the pen to confirm the toolhead stays over your paper. In an emergency use Stop on the screen (Pause moves the toolhead) or the power switch.'));
 
     const body = h('div', { class: 'export' },
       summary,
@@ -322,7 +323,7 @@
 
     // same order as Help → Calibration
     const typeSeg = UI.segmented({
-      options: [{ value: 'frame', label: '1 Frame' }, { value: 'offset', label: '2 Offset finder' }, { value: 'compact', label: '3 Z test' }, { value: 'grid', label: 'Z × speed' }],
+      options: [{ value: 'frame', label: '1 Frame' }, { value: 'compact', label: '2 Z test' }, { value: 'offset', label: '3 Offset finder' }, { value: 'grid', label: 'Z × speed' }],
       value: cur, onChange: (v) => { cur = v; st.type = v; save(); dryCb.setValue(v === 'frame'); refresh(); },
     });
     const save = () => PP.Storage.setLocal('calib', st);
@@ -401,7 +402,7 @@
       let text, sim, secs;
       if (cur === 'offset') {
         text = result.offset.text;
-        sim = PP.GSim.simulate(text, p, { expectedPauses: 3 });
+        sim = PP.GSim.simulate(text, p, { expectedPauses: 2 });
         secs = sim.stats.time;
       } else {
         const res = PP.GCode.build(result.jobs, p, { dryRun: dryCb.input.checked, title: 'Calibration (' + cur + ')' });
@@ -461,7 +462,7 @@
       step(4, 'Preview', 'Preview replays the actual G-code: pen strokes, travel moves and the safety check.'),
       step(5, 'Download and copy', 'Download the .gcode file and copy it to the root of the SD card (no folders, simple file name).'),
       step(6, 'Tape the paper', 'Tape it where the canvas shows the paper. Keep tape away from the plate center, where the printer homes.'),
-      step(7, 'Print, attach, plot', 'Start it from Print files → SD card. The printer homes, lowers the bed, parks and pauses: clip the pen holder on, check the pen, press Resume. At the end it pauses once more so you can remove the holder.'),
+      step(7, 'Print, attach, plot', 'Start it from Print files → SD card. The printer homes, lowers the bed and pauses; while paused the toolhead sits at the purge chute (back left). Clip the pen holder on there, check the pen, press Resume. At the end it pauses once more so you can remove the holder.'),
       step(8, 'Tune', 'Faint lines: lower Z-Draw by 0.5 mm. Tearing or blobs: raise it. Ghost lines on travel moves: raise Z-Lift.'),
       h('h3', null, 'Coordinates'),
       h('p', { class: 'hint' }, 'Everything on the canvas is in pen coordinates: millimetres from the front-left corner of the plate. The G-code converts them to nozzle positions (nozzle = pen - offset). The striped zone is where the pen cannot reach or the module could collide.'),
@@ -479,46 +480,51 @@
       h('h3', null, '0. Before you start'),
       h('ul', { class: 'tips' },
         h('li', null, 'Printer settings → ', h('b', null, 'Reset to defaults'), ' on your printer profile, then check the values (current: pen offset X', f(p.penOffsetX), ' Y', f(p.penOffsetY), ', nozzle safe zone X ', f(p.nozzleMinX), '-', f(p.nozzleMaxX), ' / Y ', f(p.nozzleMinY), '-', f(p.nozzleMaxY), ', Z-Draw ', f(p.zDraw), ', Z-Lift ', f(p.zLift), ').'),
-        h('li', null, 'Measure how far the pen tip sticks out below the nozzle and note it - it predicts where the pen will touch.'),
-        h('li', null, 'Check the top glass: if it limits the spring travel of the module, remove it or use a riser (mount designer\'s advice).'),
-        h('li', null, 'Tape a sheet of paper over the drawable area (X ', f(R.minX), '-', f(R.maxX), ', Y ', f(R.minY), '-', f(R.maxY), ' mm).')),
+        h('li', null, h('b', null, 'Look at the mount:'), ' the pen should sit left of and in front of the nozzle (offset X and Y both negative). If it sits to the right or behind, flip the sign before anything else - a wrong sign can put the pen past the edge of the plate.'),
+        h('li', null, h('b', null, 'Measure how far the pen tip sticks out below the nozzle.'), ' The pen touches the paper at about that Z, so set Z-Draw to it and Z-Lift about 6 mm higher (Printer settings → Z heights). Every test below starts from these values.'),
+        h('li', null, 'In the printer settings turn off AI monitoring (spaghetti, purge chute pile-up and nozzle clumping detection) and ', h('b', null, 'Auto-recovery from step loss'), ': they can pause or re-home the toolhead with the holder attached.'),
+        h('li', null, 'For the first runs lower Move speed to 80 mm/s, remove the top glass if it limits the spring travel, keep the door open, and know your emergency stop: ', h('b', null, 'Stop'), ' on the screen (Pause moves the toolhead to the purge chute) or the power switch.'),
+        h('li', null, 'Clean any filament off the nozzle tip (the printer homes by touching the plate with it) and tape a sheet of paper over the drawable area (X ', f(R.minX), '-', f(R.maxX), ', Y ', f(R.minY), '-', f(R.maxY), ' mm).')),
 
-      h('h3', null, '1. Frame test as a dry run, no pen (about 3 min)'),
-      h('p', null, 'In ', calLink('Calibrate → Frame test', 'frame'), ', tick ', h('b', null, 'Dry run'), ' and download. At the pause, attach the holder ', h('b', null, 'without a pen'), '. The toolhead traces the outline of the whole drawable area at Z-Lift, then a center cross.'),
+      h('h3', null, '1. Empty run: nothing attached (about 3 min)'),
+      h('p', null, 'Download ', calLink('Calibrate → Frame', 'frame'), ' with ', h('b', null, 'Dry run'), ' ticked and run it without attaching anything - just press Resume at each pause. Watch where the toolhead goes when it pauses (expected: the purge chute at the back left), how it returns on Resume, and that the end only lowers the bed and moves the toolhead to the back.'),
+
+      h('h3', null, '2. Frame test with the holder, no pen (about 3 min)'),
+      h('p', null, 'Run the same dry-run file again and attach the holder ', h('b', null, 'without a pen'), ' at the first pause. The toolhead traces the outline of the whole drawable area at Z-Lift, then a center cross.'),
       h('ul', { class: 'tips' },
         h('li', null, 'Watch the clearance to the door, the front frame and the left wall along the whole outline. If anything comes close, stop and shrink the nozzle limits in Printer settings → Bed & limits.'),
-        h('li', null, 'On Resume, note whether the printer re-homes X/Y with the holder attached, and whether the holder clears the frame when it does.'),
-        h('li', null, 'Check the end: the bed lowers, the printer pauses for you to remove the holder, and after Resume it only moves the toolhead to the back.')),
+        h('li', null, 'Watch the moves to and from the purge chute at each pause, with the holder on.'),
+        h('li', null, 'At the last pause remove the holder before pressing Resume.')),
 
-      h('h3', null, '2. Offset finder (about 5 min)'),
-      h('p', null, 'In ', calLink('Calibrate → Offset finder', 'offset'), ', download and run it with a pen. It pauses three times:'),
-      h('ol', { class: 'tips' },
-        h('li', null, h('b', null, 'Attach'), ' the holder with the pen. The pen draws a 16 mm cross with a small circle while the nozzle sits at a known point.'),
-        h('li', null, h('b', null, 'Remove'), ' the holder. The bare nozzle then moves over the same point and stops 3 mm above the paper.'),
-        h('li', null, h('b', null, 'Measure'), ' from the nozzle tip to the center of the cross: to the right of the nozzle is +X, left is -X, towards the back is +Y, towards the front is -Y.')),
-      h('p', null, 'Enter the two numbers as Pen offset X / Y in Printer settings → Pen mount and save. For the Falu mount expect about X -28, Y -35. If X comes out positive, the pen sits to the right of the nozzle - just enter it.'),
-      note('warn', 'Settle the offset before any full-size plot. The safe zone limits the nozzle, so a wrong offset cannot drive the module into the frame - but the drawing lands off by twice the error (about 56 mm for a wrong X sign) and can run past the edge of the plate. The offset finder itself is safe with either sign: it draws near the middle of the bed.'),
-
-      h('h3', null, '3. Z test - find the pen-down height (about 5 min)'),
-      h('p', null, 'In ', calLink('Calibrate → Z only', 'compact'), ', download with the default range (Z-Draw - 2 to Z-Draw + 3 in 1 mm steps). One cell is drawn per Z value, from the highest Z (lightest pressure) to the lowest, and each is labeled with its Z.'),
+      h('h3', null, '3. Z test: find the pen-down height (about 5 min)'),
+      h('p', null, 'In ', calLink('Calibrate → Z test', 'compact'), ', download with the default range (Z-Draw - 2 to Z-Draw + 3 in 1 mm steps) and run it with a pen. One cell is drawn per Z value, from the highest Z (lightest pressure) to the lowest, each labeled with its Z; the title is drawn last.'),
       h('ul', { class: 'tips' },
         h('li', null, 'Remember: larger Z = bed further from the nozzle = less pressure.'),
         h('li', null, 'Pick the highest Z that gives a solid, even line and set it as Z-Draw (or 0.5 mm below it for a little more pressure).'),
         h('li', null, 'Stop the print if the pen starts tearing or the module flexes.'),
-        h('li', null, 'Nothing drew at all? Your pen touches higher than the test range. Raise Z-Draw and Z-Lift in Printer settings (Z-Lift at least 1 mm above Z-Draw) and run it again - the range always follows the current Z-Draw.'),
+        h('li', null, 'Nothing drew at all? The pen touches higher than the test range: raise Z-Draw and Z-Lift and run it again - the range always follows the current Z-Draw.'),
         h('li', null, 'For safety the pen never goes more than 4 mm below Z-Draw (and never below half of it), so a test cannot push the pen through the bed.')),
 
-      h('h3', null, '4. Frame test with a pen'),
-      h('p', null, 'Run ', calLink('Calibrate → Frame test', 'frame'), ' again without Dry run. The outline should land on the paper just inside the striped zone on the canvas, and the center cross in the middle of it. This confirms the offsets, the paper position and Z-Draw together.'),
+      h('h3', null, '4. Offset finder (about 5 min)'),
+      h('p', null, 'In ', calLink('Calibrate → Offset finder', 'offset'), ', download and run it with a pen:'),
+      h('ol', { class: 'tips' },
+        h('li', null, h('b', null, 'First pause: attach'), ' the holder with the pen. The pen draws a 16 mm cross with a small circle while the nozzle sits at a known point near the middle of the bed.'),
+        h('li', null, h('b', null, 'Second pause: remove'), ' the holder, then press Resume.'),
+        h('li', null, h('b', null, 'Measure:'), ' the bare nozzle moves over the same point at Z-Lift and waits 3 minutes. Measure from the nozzle tip to the center of the cross (a square or a ruler held upright helps): to the right of the nozzle is +X, left is -X, towards the back is +Y, towards the front is -Y.')),
+      h('p', null, 'Enter the two numbers as Pen offset X / Y in Printer settings → Pen mount and save. For the Falu mount expect about X -28, Y -35.'),
+      note('warn', 'Settle the offset before any full-size plot. The safe zone limits the nozzle, so a wrong offset cannot drive the module into the frame - but the drawing lands off by twice the error (about 56 mm for a wrong X sign) and can run past the edge of the plate.'),
 
-      h('h3', null, '5. Optional: Z × speed grid'),
+      h('h3', null, '5. Frame test with a pen'),
+      h('p', null, 'Run ', calLink('Calibrate → Frame', 'frame'), ' again without Dry run. The outline should land on the paper just inside the striped zone on the canvas, and the center cross in the middle of it. This confirms the offsets, the paper position and Z-Draw together. Then raise Move speed back up.'),
+
+      h('h3', null, '6. Optional: Z × speed grid'),
       h('p', null, calLink('Calibrate → Z × speed', 'grid'), ' draws the same Z columns at several speeds (rows). Use it to pick the fastest speed that still gives a clean line, then set Draw speed in Plotter settings.'),
 
       h('h3', null, 'Write down'),
       h('ul', { class: 'tips' },
         h('li', null, 'Pen offset X / Y, and the pen and how far it sticks out.'),
         h('li', null, 'The Z-Draw that works for each pen - set it per layer with the layer\'s settings button when you plot with several pens.'),
-        h('li', null, 'Anything unexpected from the frame test (re-homing on resume, close clearances).')),
+        h('li', null, 'Anything unexpected from the empty run and the frame test: where the toolhead goes when paused, re-homing on Resume, close clearances.')),
       note('warn', 'Re-run the Z test whenever you change pens or re-seat a pen in the holder, and the frame test after any change to offsets, nozzle limits or paper position.'),
     ];
   }
@@ -528,6 +534,8 @@
       h('ul', { class: 'tips' },
         h('li', null, h('b', null, 'Never attach the pen holder before the first pause.'), ' The printer probes the plate with the nozzle while homing.'),
         h('li', null, h('b', null, 'Never start a normal 3D print with the module attached'), ' - it can collide when the printer cuts filament.'),
+        h('li', null, 'Turn off AI monitoring (spaghetti, purge chute pile-up, nozzle clumping) and Auto-recovery from step loss before plotting: they can pause or re-home the toolhead with the holder attached.'),
+        h('li', null, 'Emergency: use ', h('b', null, 'Stop'), ' on the screen or the power switch. Pause moves the toolhead to the purge chute. Never jog the toolhead with the holder attached.'),
         h('li', null, 'Heaters stay off and the G-code contains no extrusion.'),
         h('li', null, 'Every file is replayed in a G-code simulator before download. It checks the module safe zone, pen heights, travel lifts, pauses and the end of the file, and asks before you download a file that fails.'),
         h('li', null, 'The nozzle safe zone (Printer settings → Bed & limits) keeps the module away from the frame and door. The striped area on the canvas is where the pen cannot go.'),

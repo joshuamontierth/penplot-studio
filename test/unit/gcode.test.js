@@ -45,8 +45,8 @@ describe('X1C profile defaults (HANDOFF §4.3)', () => {
       penDownDelay: 50,
       penUpDelay: 0,
       pauseCommand: 'M400 U1',
-      parkX: 152,
-      parkY: 70,
+      parkX: 80,
+      parkY: 245,
       endX: 152,
       endY: 250,
     });
@@ -134,7 +134,7 @@ describe('build: Bambu file structure (HANDOFF §5)', () => {
   it('homes first, then lowers the bed, parks and pauses to attach the holder', () => {
     const g28 = find(ls, /^G28/);
     const lower = find(ls, /^G1 Z60 F900$/, g28);
-    const park = find(ls, /^G1 X152 Y70 F12000$/, lower);
+    const park = find(ls, /^G1 X80 Y245 F12000$/, lower);
     const pause = find(ls, /^M400 U1$/, park);
     expect([g28, lower, park, pause].every((i, k, a) => i > (a[k - 1] ?? -1))).toBe(true);
     expect(ls.slice(park, pause).join('\n')).toMatch(/attach the pen holder/);
@@ -235,9 +235,16 @@ describe('offsetFinder', () => {
   it('attaches, draws the cross with the nozzle at the safe-zone center, removes the holder and pauses to measure', () => {
     const P = GC.normalizeProfile(X1C);
     const of = GC.offsetFinder(P);
-    const sim = SIM.simulate(of.text, P, { expectedPauses: 3 });
+    const sim = SIM.simulate(of.text, P, { expectedPauses: 2 });
     expect(sim.errors).toEqual([]);
-    expect(sim.pauses.map((p) => p.action)).toEqual(['attach', 'remove', 'inspect']);
+    expect(sim.pauses.map((p) => p.action)).toEqual(['attach', 'remove']);
+    // measuring is a timed wait at Z-Lift (a pause would send the toolhead to the purge chute)
+    expect(of.text).toMatch(/^M400 S180$/m);
+    expect(of.text).not.toMatch(/^G1 Z3 /m);
+    const zAfterRemove = [...of.text.split('; PP_PAUSE remove')[1].matchAll(/^G1 Z([\d.]+)/gm)].map((m) =>
+      Number(m[1]),
+    );
+    expect(Math.min(...zAfterRemove)).toBeGreaterThanOrEqual(P.zLift);
     expect(sim.strokes).toHaveLength(3);
     expect(of.legend.join(' ')).toMatch(/X152 Y155\.5/);
   });

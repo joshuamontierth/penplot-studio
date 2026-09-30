@@ -74,11 +74,12 @@ project up. Read sections 1–3 before touching printer-related code._
 | A2 | **Pen offset Y = −35** (pen **in front** of the nozzle) | Medium-high | Instructables "35mm forward"; Falu's excluded front strip. Falu's 41 mm rear paper margin suggests about −41 (possibly with extra margin) | Offset finder |
 | A3 | **Nozzle safe zone X 48–256, Y 55–256** while the holder is attached | High (the designer states it) | Falu's excluded area. The polygon uses 258; we use 256 (the X1C plate size) | Frame test as a dry run, then with the pen; watch clearances to the door/front frame and left wall |
 | A4 | Z-Draw 14, Z-Lift 20 | Low-medium | Instructables says 14/20; Falu says Z-offset about 17 for a Stabilo. It depends on how far the pen sticks out and on the spring | Compact calibration (default Z 12…17 in 1 mm steps, highest Z drawn first) |
-| A5 | `M400 U1` pauses and resumes cleanly; the firmware may re-home XY on resume | Medium | Forum reports | Watch the first attach pause; note any XY homing with the holder attached (collision risk, §9.3) |
+| A5 | `M400 U1` pauses; **while paused the firmware moves the toolhead to the purge chute (back left), lowers the plate slightly, and returns on Resume**. No XY re-home after a screen pause | Medium-high (session 2) | Forum "large layer shift after manual pause" (head goes to the chute, returns on resume); rebelthor pen-plotter guide (users jog the head forward at the start pause to reach it) | Empty run (§9.2). Park is now X80 Y245, near the chute, so the firmware's move with the holder on stays short. The offset finder measures during a timed `M400 S180`, not a pause |
 | A6 | `M400 P50` dwell works on the X1C | High | Bambu's own end G-code uses `M400 P100` | Visual |
 | A7 | Plain `.gcode` from the SD root prints from the screen ("Print files → SD card") | High | Instructables + forum | First run |
 | A8 | The `G380` safe-start preamble (copied from Bambu's start G-code) is harmless on the X1C/P1 | High | It's in the official X1 start G-code | First run (the bed drops about 10 mm before homing) |
 | A9 | After a plain-gcode job ends, the firmware makes **no extra moves** (no filament cut) | Unknown | Falu's warning is about slicer end G-code | We add an **end pause** ("remove the pen holder"), so it's safe either way |
+| A12 | Firmware features stay off during plotting: AI monitoring (spaghetti, purge chute pile-up, nozzle clumping) and **Auto-recovery from step loss** (it re-homes XY toward the front-right, which would hit the front frame with the holder on) | Required, user action | Session 2 review (Bambu wiki/forum) | Printer settings before the first run; the export dialog and Help say so |
 | A10 | `M73 P<pct> R<min>` shows progress on the X1C screen | High | Used in Bambu files | Visual |
 | A11 | 200 mm/s travel and 4000 mm/s² acceleration don't shake the clipped-on holder loose | Unknown | — | First plot; lower in settings if needed |
 
@@ -152,7 +153,7 @@ GSim.check(text, profile, jobs) ⇒ {ok, errors, warnings, strokes, travels, pau
 | `penDownDelay`, `penUpDelay` | 50, 0 ms | `M400 P` (Bambu) or `G4 P` (Marlin) |
 | `home`, `safeStart`, `pauseForAttach`, `layerPause`, `endPause`, `progress`, `heatersOff` | all true | |
 | `pauseCommand` | `M400 U1` | Marlin: `M0 …` |
-| `parkX/Y` | 152, 70 | Nozzle position for all pauses |
+| `parkX/Y` | 80, 245 | Nozzle position before each pause (the firmware then moves to the purge chute, A5) |
 | `endX/Y` | 152, 250 | |
 | `startGcode`, `endGcode` | '' | Inserted before homing / at the end |
 
@@ -204,7 +205,7 @@ M220 S100 / M204 S4000
 [custom start G-code]
 G91 / M17 Z0.4 / G380 S2 Z30 F300 / G380 S2 Z-25 F300 / G1 Z5 F300 / G90 / M17 X1.2 Y1.2 Z0.75   ; safeStart
 G28                                     ; holder NOT attached
-G90 / G1 Z60 F900 / G1 X152 Y70 F12000 / M400
+G90 / G1 Z60 F900 / G1 X80 Y245 F12000 / M400
 ; PAUSE: attach the pen holder …
 M400 U1
 G90 / G1 Z20 F900
@@ -212,7 +213,7 @@ G90 / G1 Z20 F900
   [pen change: G1 Z60 / park / M400 / ; PAUSE: change to the pen … / M400 U1 / G90 / G1 Z20]
   G1 X Y F12000 / G1 Z<zd> F900 ; pen down / M400 P50 / G1 X Y F1800 … / G1 Z20 F900 ; pen up / M73 P R
 ; ===== End =====
-G1 Z80 / G1 X152 Y70 / M400 / ; PAUSE: remove the pen holder now … / M400 U1 / G90
+G1 Z80 / G1 X80 Y245 / M400 / ; PAUSE: remove the pen holder now … / ; PP_PAUSE remove / M400 U1 / G90
 G1 X152 Y250 / M400 / [custom end] / M73 P100 R0
 ```
 
@@ -367,35 +368,48 @@ when the session ended.
 
 Record every answer. They settle the assumptions in §3.
 
-### 9.1 Prep
+### 9.1 Prep (gates: don't attach anything until these are done)
 
 1. In **Printer settings**, click **Reset to defaults** on the X1C profile, then confirm offset −28/−35, safe zone
-   48–256 / 55–256, Z 14/20.
-2. Check the pen: how many mm does the tip stick out below the nozzle level? Record it (this predicts Z contact).
-3. Check the top glass against the spring travel, per Falu. Remove the glass or use a riser if needed.
+   48–256 / 55–256, park 80/245.
+2. **Look at the mount:** the pen must sit left of and in front of the nozzle (both offsets negative). Otherwise fix
+   the sign first; a wrong sign can put the pen past the plate edge (§3.2).
+3. **Measure the pen stick-out** below the nozzle. Set Z-Draw to about that value and Z-Lift about 6 mm higher.
+4. **Turn off** AI monitoring (spaghetti, purge chute pile-up, nozzle clumping) and Auto-recovery from step loss (A12).
+5. Remove the top glass if it limits the spring travel (Falu). Keep the door open.
+6. Set Move speed to 80 mm/s for the first runs.
+7. Plan the emergency stop: **Stop** on the screen (Pause moves the head to the chute), or the rear power switch.
+8. Clean filament off the nozzle tip; Z homing touches the plate with it.
+9. First, test a tiny file to confirm the screen lists and runs plain `.gcode` from the SD card root.
 
-### 9.2 Dry runs (no pen)
+### 9.2 Empty and dry runs
 
-1. **Calibrate → Frame test → Dry run**, then download. Run it with the holder **attached at the pause** but no pen.
-   - Does the toolhead stay clear of the door, frame and left wall across the whole frame? *(Validates A3.)*
-   - On resume, does the firmware home XY? If so, does the holder clear? *(A5)*
+1. **Empty run:** **Calibrate → Frame** with Dry run, attaching **nothing**; press Resume at each pause.
+   - Where does the toolhead go while paused (chute, back left)? Where does it return on Resume? *(A5)*
    - Does the `G380` preamble behave (the bed drops about 10 mm before homing)? *(A8)*
    - Does the screen show progress? *(A10)*
-   - Is there a final pause, and does the job end cleanly with no extra moves after resume? *(A9)*
+   - Does the job end cleanly with no extra moves after the last Resume? *(A9)*
+2. **Frame dry run with the holder, no pen:** the same file with the holder attached at the first pause.
+   - Does it clear the door, frame and left wall along the whole outline? *(A3)*
+   - Do the moves to and from the chute clear, with the holder on? *(A5)*
 
-### 9.3 Offset finder (with pen)
+### 9.3 Z calibration (with pen)
+
+1. **Calibrate → Z test** (Z-Draw − 2 … + 3, highest Z first, title last). Record the first Z that draws a solid line
+   and the lowest Z before dragging or tearing.
+2. Set Z-Draw to about the first-solid value minus 0–0.5. Optionally run **Z × speed** for speed.
+
+### 9.4 Offset finder (with pen)
 
 1. **Calibrate → Offset finder** → download → run.
-2. At pause 3, measure from the nozzle tip to the center of the cross: record ΔX (right +) and ΔY (back +).
+   - First pause: attach the holder.
+   - Second pause: remove it.
+   - The bare nozzle then waits 3 minutes at Z-Lift over the cross.
+2. Measure from the nozzle tip to the center of the cross: record ΔX (right +) and ΔY (back +).
    - **Expected** about ΔX −28, ΔY −35 (or around −41 per Falu's margins).
 3. Enter the values in Printer settings. If the X sign is +, update `BAMBU_BASE.penOffsetX` in `gcode.js` and every
    doc that mentions −28 (README, Help, HANDOFF, memory note).
-
-### 9.4 Z calibration
-
-1. **Calibrate → Compact** (Z 12…17, highest Z first). Record the first Z that draws a solid line and the lowest Z
-   before dragging or tearing.
-2. Set Z-Draw to about the first-solid value minus 0–0.5. Optionally run **Full** for speed.
+4. Run **Calibrate → Frame** with a pen (no dry run). The outline should land just inside the striped zone.
 
 ### 9.5 Real plot
 

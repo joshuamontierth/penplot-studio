@@ -159,7 +159,7 @@ test('calibration: frame dry run and offset finder download simulator-clean file
   expect(frameSim.strokes).toBe(0);
 
   await dlg.locator('.seg-btn', { hasText: 'Offset finder' }).click();
-  await expect(dlg.locator('.seg-btn.on')).toHaveText('2 Offset finder');
+  await expect(dlg.locator('.seg-btn.on')).toHaveText('3 Offset finder');
   await expect(dlg.locator('.tips li').first()).toBeVisible();
   const file = await download(page, trigger);
   expect(file.name).toBe('calibration_offset.gcode');
@@ -169,10 +169,10 @@ test('calibration: frame dry run and offset finder download simulator-clean file
   expect(file.text).toContain('M400 U1');
   expect(file.text).toContain('G28');
 
-  const sim = await simulate(page, file.text, { expectedPauses: 3 });
+  const sim = await simulate(page, file.text, { expectedPauses: 2 });
   expect(sim.errors).toEqual([]);
   expect(sim.ok).toBe(true);
-  expect(sim.pauses).toBe(3); // attach, remove the holder, measure
+  expect(sim.pauses).toBe(2); // attach, remove the holder (then a timed wait to measure)
   expect(sim.strokes).toBeGreaterThan(0);
 
   // the guide opens on top at the Calibration tab; the dialog remembers the last test
@@ -182,6 +182,6 @@ test('calibration: frame dry run and offset finder download simulator-clean file
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Calibrate', exact: true }).click();
-  await expect(dialog(page, 'Calibration').locator('.seg-btn.on')).toHaveText('2 Offset finder');
+  await expect(dialog(page, 'Calibration').locator('.seg-btn.on')).toHaveText('3 Offset finder');
   expect(consoleProblems).toEqual([]);
 });
