@@ -62,6 +62,20 @@
         S.updateMany(new Map(sel.map(o => [o.id, { [key]: o[key] + d }])));
       } else if (key === 'w' || key === 'h') {
         const k = v / Math.max(0.001, gi[key]);
+        if (!aspectLock) {
+          // stretch along one world axis: each object stretches along whichever of its own axes lines up with it,
+          // which is exact only at multiples of 90 degrees (other angles would need a shear)
+          const quarter = (o) => { const r = ((o.rotation % 180) + 180) % 180; return r < 1e-6 || 180 - r < 1e-6 ? 0 : Math.abs(r - 90) < 1e-6 ? 90 : null; };
+          if (sel.every(o => quarter(o) !== null)) {
+            const pos = key === 'w' ? 'x' : 'y', c = gi[pos];
+            S.updateMany(new Map(sel.map(o => {
+              const local = (quarter(o) === 0) === (key === 'w') ? 'scaleX' : 'scaleY';
+              return [o.id, { [pos]: c + (o[pos] - c) * k, [local]: o[local] * k }];
+            })));
+            return;
+          }
+          UI.toast('Objects rotated at an angle can only be scaled proportionally, so the selection was scaled evenly.', 'info');
+        }
         S.updateMany(new Map(sel.map(o => [o.id, { x: gi.x + (o.x - gi.x) * k, y: gi.y + (o.y - gi.y) * k, scaleX: o.scaleX * k, scaleY: o.scaleY * k }])));
       }
     }
@@ -123,7 +137,8 @@
         pop = UI.popover(alignB, h('div', { class: 'menu' },
           item('Center on the paper', () => ops.align('center', 'paper')),
           item('Center in the drawable area', () => ops.align('center', 'drawable')),
-          item('Fit to the paper (10 mm margin)', () => ops.fit(10))));
+          item('Fit to the paper (10 mm margin)', () => ops.fit(10, 'paper')),
+          item('Fit to the drawable area (10 mm margin)', () => ops.fit(10))));
       }, { small: true, cls: 'btn-menu', title: 'Center or fit the selection' });
       alignB.appendChild(UI.icon('chevron', 12));
       body.lastChild.appendChild(alignB);

@@ -459,3 +459,57 @@ test('layers reorder by drag, the color picker survives changes, paper and align
   near((moved.bbox.minX + moved.bbox.maxX) / 2, pa.x + pa.w / 2, 0.6);
   expect(consoleProblems).toEqual([]);
 });
+
+test('multi-select stretches on one axis when Keep proportions is off; fit to paper vs drawable area', async ({
+  page,
+  consoleProblems,
+}) => {
+  const ids = await page.evaluate(() => {
+    const S = PP.Store;
+    S.reset();
+    const a = PP.Objects.create.shape('rect', { x: 100, y: 100, w: 20, h: 10 });
+    const b = PP.Objects.create.shape('rect', { x: 140, y: 100, w: 10, h: 20, rotation: 90 });
+    S.add([a, b], { history: false });
+    S.select(S.project.objects.map((o) => o.id));
+    return S.project.objects.map((o) => o.id);
+  });
+  const props = page.locator('#right-panel .sec', { has: page.locator('.sec-head', { hasText: 'Selection' }) });
+  const field = (label) =>
+    props.locator('.field', { has: page.locator('label', { hasText: new RegExp('^' + label) }) }).locator('input');
+  const group = () =>
+    page.evaluate((list) => {
+      let bb = null;
+      for (const id of list) bb = PP.Geo.bboxUnion(bb, PP.Objects.world(PP.Store.get(id)).bbox);
+      return { w: bb.maxX - bb.minX, h: bb.maxY - bb.minY };
+    }, ids);
+  const before = await group();
+  if ((await page.locator('#right-panel .aspect-row .icon-btn.on').count()) > 0)
+    await page.locator('#right-panel .aspect-row .icon-btn').click();
+  await field('W').fill(String(before.w * 2));
+  await field('W').press('Enter');
+  await expect.poll(async () => (await group()).w).toBeCloseTo(before.w * 2, 3);
+  expect((await group()).h).toBeCloseTo(before.h, 3); // height unchanged
+
+  // the two fit targets differ: the Letter paper sticks out of the X1C's drawable area at the front-left
+  const center = async () => {
+    const g = await page.evaluate((list) => {
+      let bb = null;
+      for (const id of list) bb = PP.Geo.bboxUnion(bb, PP.Objects.world(PP.Store.get(id)).bbox);
+      return bb;
+    }, ids);
+    return [(g.minX + g.maxX) / 2, (g.minY + g.maxY) / 2];
+  };
+  await page.getByRole('button', { name: 'Align' }).click();
+  await page.locator('.popover .menu-item', { hasText: 'Fit to the paper' }).click();
+  const pa = await page.evaluate(() => PP.Store.project.paper);
+  const [px, py] = await center();
+  expect(px).toBeCloseTo(pa.x + pa.w / 2, 3);
+  expect(py).toBeCloseTo(pa.y + pa.h / 2, 3);
+  await page.getByRole('button', { name: 'Align' }).click();
+  await page.locator('.popover .menu-item', { hasText: 'Fit to the drawable area' }).click();
+  const area = await page.evaluate(() => PP.App.workArea());
+  const [dx, dy] = await center();
+  expect(dx).toBeCloseTo((area.minX + area.maxX) / 2, 3);
+  expect(dy).toBeCloseTo((area.minY + area.maxY) / 2, 3);
+  expect(consoleProblems).toEqual([]);
+});

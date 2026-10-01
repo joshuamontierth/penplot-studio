@@ -274,11 +274,13 @@
       const m = new Map(sel.map(o => [o.id, { x: o.x + dx, y: o.y + dy }]));
       S.updateMany(m);
     },
-    fit(margin = 10) {
+    /** target 'work': the drawable part of the paper (the default); 'paper': the whole sheet, centered on it. */
+    fit(margin = 10, target = 'work') {
       const sel = editableSel();
       if (!sel.length) return;
       const bb = groupBBox(sel);
-      const T = App.workArea();
+      const pa = S.project.paper;
+      const T = target === 'paper' && pa.visible ? { minX: pa.x, minY: pa.y, maxX: pa.x + pa.w, maxY: pa.y + pa.h } : App.workArea();
       const aw = T.maxX - T.minX - 2 * margin, ah = T.maxY - T.minY - 2 * margin;
       if (aw <= 1 || ah <= 1) return;
       const k = Math.min(aw / Math.max(0.01, bb.maxX - bb.minX), ah / Math.max(0.01, bb.maxY - bb.minY));
