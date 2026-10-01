@@ -27,3 +27,6 @@ Desktop.ini
 # Electron desktop app: staged copy of the web app and installer output (desktop/node_modules is covered above)
 desktop/app/
 desktop/dist/
+
+# scratch scripts agents run from the repo root
+*.tmp.mjs

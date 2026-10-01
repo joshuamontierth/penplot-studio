@@ -17,3 +17,6 @@ css/
 *.html
 tests/
 *.md
+
+# scratch scripts agents run from the repo root
+*.tmp.mjs
