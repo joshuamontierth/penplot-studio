@@ -425,3 +425,16 @@ describe('estimate', () => {
     }
   });
 });
+
+describe('prepare: minimum length vs simplify', () => {
+  it('keeps a small closed loop longer than minLength even when simplify collapses it (nightly fuzz seed 101251)', () => {
+    const O = window.PP.Optimizer;
+    // a 0.35 mm wide loop, about 1.1 mm long: a letter counter at a tiny size
+    const loop = [];
+    for (let i = 0; i <= 18; i++)
+      loop.push(50 + 0.175 * Math.cos((i / 18) * 2 * Math.PI), 50 + 0.175 * Math.sin((i / 18) * 2 * Math.PI));
+    const res = O.prepare([loop], { tolerance: 0.29, minLength: 0.54 });
+    expect(res.removed).toBe(0);
+    expect(res.polys).toHaveLength(1);
+  });
+});

@@ -43,7 +43,8 @@
       out = r.polys;
       clipped = r.clipped;
     }
-    if (tol > 0) out = out.map(q => (q.length > 4 ? G.simplify(q, tol) : q));
+    // Judge the minimum length before simplifying: simplify can collapse a small closed loop (a letter's counter at
+    // a tiny size) into a stub shorter than minLength, and a feature longer than minLength would vanish
     let removed = 0;
     if (minLen > 0) {
       out = out.filter(p => {
@@ -53,6 +54,7 @@
         return false;
       });
     }
+    if (tol > 0) out = out.map(q => (q.length > 4 ? G.simplify(q, tol) : q));
     return { polys: out, clipped, removed };
   }
 
