@@ -235,7 +235,7 @@
       if (!name) return;
       const inp = h('input', { class: 'layer-rename', value: L.name, 'aria-label': 'Layer name' });
       name.replaceWith(inp);
-      busy = id;
+      busy = 'rename:' + id;
       inp.focus(); inp.select();
       const done = () => { busy = null; const v = inp.value.trim(); if (v && v !== L.name) S.updateLayer(L.id, { name: v }); else render(); };
       inp.addEventListener('blur', done);
@@ -285,12 +285,12 @@
         const color = h('input', { type: 'color', class: 'swatch', value: L.color, title: 'Pen color', 'aria-label': 'Pen color for ' + L.name });
         let recoloring = false;
         color.addEventListener('input', () => {
-          busy = L.id;
+          busy = 'color:' + L.id;
           if (!recoloring) { recoloring = true; S.checkpoint(); } // one undo step for the whole pick
           S.updateLayer(L.id, { color: color.value }, { history: false });
         });
-        color.addEventListener('change', () => { recoloring = false; busy = null; renderSoon(); });
-        color.addEventListener('blur', () => { if (busy === L.id && !dragId) { recoloring = false; busy = null; renderSoon(); } });
+        color.addEventListener('change', () => { recoloring = false; if (busy === 'color:' + L.id) busy = null; renderSoon(); });
+        color.addEventListener('blur', () => { if (busy === 'color:' + L.id) { recoloring = false; busy = null; renderSoon(); } });
         const name = h('span', { class: 'layer-name', title: 'Double-click to rename' }, L.name);
         name.addEventListener('dblclick', () => startRename(L.id));
         const lockB = L.locked ? UI.iconBtn('lock', 'Locked - click to unlock', (e) => { e.stopPropagation(); S.updateLayer(L.id, { locked: false }); }, { size: 14, cls: 'on' }) : null;
@@ -302,12 +302,13 @@
         // drag the grip to reorder (layer order = plot order)
         grip.addEventListener('pointerdown', () => { row.draggable = true; });
         row.addEventListener('dragstart', (e) => {
-          dragId = L.id; busy = L.id;
+          dragId = L.id; busy = 'drag:' + L.id;
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('application/x-penplot-layer', L.id);
           row.classList.add('dragging');
         });
-        row.addEventListener('dragend', () => { row.draggable = false; dragId = null; busy = null; clearMarks(); render(); });
+        // dragend can arrive late: only end this drag's hold, never a color pick or rename that started since
+        row.addEventListener('dragend', () => { row.draggable = false; dragId = null; clearMarks(); if (busy === 'drag:' + L.id) { busy = null; render(); } });
         row.addEventListener('dragover', (e) => {
           if (!dragId) return;
           e.preventDefault(); e.stopPropagation();
@@ -323,8 +324,10 @@
           let to = e.clientY > r.top + r.height / 2 ? i + 1 : i;
           if (from < to) to--;
           const id = dragId;
-          dragId = null; busy = null;
+          dragId = null;
+          if (busy === 'drag:' + id) busy = null;
           S.moveLayerTo(id, to);
+          render(); // show the new order now, not after the debounced re-render
         });
 
         row.addEventListener('click', (e) => {

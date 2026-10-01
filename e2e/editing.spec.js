@@ -428,6 +428,7 @@ test('layers reorder by drag, the color picker survives changes, paper and align
     .locator('.layer-grip')
     .dragTo(rows.nth(0), { targetPosition: { x: 40, y: 4 } });
   await expect.poll(names).toEqual([second, first]);
+  await page.waitForTimeout(150); // let the list's 50 ms debounced re-render after the drop land
 
   // a color change must not re-render the row under the open picker (the picker used to close)
   const swatch = rows.first().locator('input[type=color]');
