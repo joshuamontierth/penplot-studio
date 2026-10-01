@@ -92,7 +92,7 @@
     const sysBtn = UI.btn('Installed fonts', async () => {
       try {
         const n = await PP.Fonts.listSystemFonts();
-        UI.toast(n + ' fonts from this computer are in the font list (drawn as outlines).', 'info');
+        UI.toast(n + (n === 1 ? ' font' : ' fonts') + ' from this computer ' + (n === 1 ? 'is' : 'are') + ' in the font list (drawn as outlines).', 'info');
       } catch (e) { UI.toast(e.message, 'warn'); }
     }, { small: true, title: 'Add the fonts installed on this computer to the font list' });
     const customList = h('div', { class: 'font-list' });
@@ -273,9 +273,14 @@
     const grid = h('div', { class: 'mode-grid', role: 'radiogroup', 'aria-label': 'Trace style' });
     const paint = () => grid.querySelectorAll('.mode-btn').forEach(b => { const on = b.dataset.mode === mode; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
     for (const m of modes) {
-      grid.appendChild(h('button', { class: 'mode-btn', role: 'radio', title: m.description, dataset: { mode: m.id }, onclick: () => { mode = m.id; paint(); } }, m.name));
+      grid.appendChild(h('button', { class: 'mode-btn', role: 'radio', title: m.description, dataset: { mode: m.id }, onclick: () => {
+        mode = m.id; paint();
+        PP.Storage.setLocal('trace', Object.assign(PP.Storage.getLocal('trace', {}), { mode }));
+      } }, m.name));
     }
     paint();
+    // the trace dialog remembers the style chosen there too: show it when coming back
+    grid.addEventListener('pointerenter', () => { mode = PP.Storage.getLocal('trace', {}).mode || mode; paint(); });
     pane.append(UI.section('Image', [drop,
       h('div', { class: 'field' }, h('label', null, 'Trace style'), grid),
       h('p', { class: 'hint' }, 'Outline and Center line suit line art; the rest suit photos.')]));

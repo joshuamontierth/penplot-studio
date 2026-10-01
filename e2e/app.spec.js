@@ -121,3 +121,57 @@ test('keyboard shortcuts pick tools; zoom keys and buttons change the zoom', asy
   await expect(zoom).toHaveText('100%');
   expect(consoleProblems).toEqual([]);
 });
+
+test('audit fixes: check chip, Align fits, inspector follows layers, one undo per hatch edit', async ({
+  page,
+  consoleProblems,
+}) => {
+  await openApp(page);
+  // a hidden layer with objects is a note, not "Ready to plot"
+  await page.evaluate(() => {
+    const S = PP.Store;
+    S.addLayer();
+    S.add(PP.Objects.create.shape('rect', { x: 120, y: 120, w: 20, h: 20 }), { history: false });
+    S.updateLayer(S.project.activeLayerId, { visible: false });
+  });
+  await expect(page.locator('#statusbar .st-check')).toHaveText('1 note');
+  await page.evaluate(() => PP.Store.updateLayer(PP.Store.project.activeLayerId, { visible: true }));
+  await expect(page.locator('#statusbar .st-check')).toHaveText('Ready to plot');
+
+  // the Align button stays inside the right panel (it was cut off)
+  await page.evaluate(() => PP.Store.select(PP.Store.project.objects[0].id));
+  const panel = await page.locator('#right-panel').boundingBox();
+  const align = await page.getByRole('button', { name: 'Align' }).boundingBox();
+  expect(align.x + align.width).toBeLessThanOrEqual(panel.x + panel.width);
+  expect(await page.locator('#right-panel').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+  // renaming a layer updates the selection's Layer menu
+  await page.evaluate(() => PP.Store.updateLayer(PP.Store.project.objects[0].layerId, { name: 'Renamed pen' }));
+  await expect(page.locator('#right-panel select option', { hasText: 'Renamed pen' })).toHaveCount(1);
+
+  // a typed hatch spacing is one undo step
+  await page.evaluate(() =>
+    PP.Store.update(PP.Store.project.objects[0].id, {
+      fill: Object.assign({}, PP.Objects.DEFAULT_FILL, { enabled: true }),
+    }),
+  );
+  const hatch = page.locator('#right-panel .sec', { hasText: 'Hatch fill' });
+  if (await hatch.locator('.sec.collapsed').count())
+    await hatch.locator('.sec-head', { hasText: 'Hatch fill' }).click();
+  const spacing = hatch.locator('.field', { hasText: 'Line spacing' }).locator('input.num');
+  await spacing.fill('3');
+  await spacing.press('Enter');
+  const fillSpacing = () => page.evaluate(() => PP.Store.project.objects[0].fill.spacing);
+  await expect.poll(fillSpacing).toBe(3);
+  await page.keyboard.press('Escape');
+  await page.locator('#canvas-wrap canvas').focus();
+  await page.keyboard.press('Control+z');
+  await expect.poll(fillSpacing).toBe(await page.evaluate(() => PP.Objects.DEFAULT_FILL.spacing));
+  expect(consoleProblems).toEqual([]);
+});
+
+test('the project name stays visible at 1280 px', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await openApp(page);
+  await expect(page.getByRole('textbox', { name: 'Project name' })).toBeVisible();
+});

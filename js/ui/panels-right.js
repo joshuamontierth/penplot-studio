@@ -18,7 +18,9 @@
 
     function signature() {
       const sel = S.selected();
-      return sel.map(o => o.id + ':' + o.type + ':' + o.layerId + ':' + (o.locked ? 1 : 0) + ':' + (o.fill && o.fill.enabled ? 1 : 0)).join('|') + '#' + S.project.layers.length;
+      // layers too: their names fill the Layer menu, and a lock/hide changes what is editable
+      return sel.map(o => o.id + ':' + o.type + ':' + o.layerId + ':' + (o.locked ? 1 : 0) + ':' + (o.fill && o.fill.enabled ? 1 : 0)).join('|') +
+        '#' + S.project.layers.map(l => l.id + ':' + l.name + ':' + (l.visible ? 1 : 0) + (l.locked ? 1 : 0)).join(',');
     }
 
     function groupInfo(sel) {
@@ -106,7 +108,7 @@
       fields = { fx, fy, fw, fh, fr };
 
       const ops = PP.App.ops;
-      body.appendChild(h('div', { class: 'btn-row' },
+      body.appendChild(h('div', { class: 'btn-row wrap' },
         UI.iconBtn('fliph', 'Mirror horizontally', () => ops.mirror('x')),
         UI.iconBtn('flipv', 'Mirror vertically', () => ops.mirror('y')),
         UI.iconBtn('rotate', 'Rotate 90°', () => ops.rotateBy(-90)),
@@ -162,7 +164,8 @@
           const targets = S.selected().filter(S.isEditable);
           if (!targets.length) return;
           const m = new Map(targets.map(o => [o.id, { fill: Object.assign({}, OBJ.DEFAULT_FILL, o.fill || {}, patch) }]));
-          if (final) S.updateMany(m); else { if (!setFill._live) { S.checkpoint(); setFill._live = true; } S.updateMany(m, { history: false }); }
+          // one undo step per drag or typed value: the live updates already checkpointed
+          if (final) S.updateMany(m, setFill._live ? { history: false } : {}); else { if (!setFill._live) { S.checkpoint(); setFill._live = true; } S.updateMany(m, { history: false }); }
           if (final) setFill._live = false;
         };
         const sub = h('div', { class: 'sub' },
@@ -364,15 +367,15 @@
         const pr = S.PAPER_PRESETS.find(p => p.id === v);
         if (!pr) return;
         if (v === 'custom') { S.setPaper({ preset: v }); return; }
-        const land = pa().landscape;
-        S.setPaper({ preset: v, w: land ? pr.h : pr.w, h: land ? pr.w : pr.h });
+        const land = pa().w > pa().h; // orientation follows the shape, not a flag
+        S.setPaper({ preset: v, landscape: land, w: land ? pr.h : pr.w, h: land ? pr.w : pr.h });
       },
     });
     const orient = UI.segmented({
-      options: [{ value: 'p', label: 'Portrait' }, { value: 'l', label: 'Landscape' }], value: pa().landscape ? 'l' : 'p',
+      options: [{ value: 'p', label: 'Portrait' }, { value: 'l', label: 'Landscape' }], value: pa().w > pa().h ? 'l' : 'p',
       onChange: (v) => {
         const land = v === 'l';
-        if (land === pa().landscape) return;
+        if (land === (pa().w > pa().h)) return;
         S.setPaper({ landscape: land, w: pa().h, h: pa().w });
       },
     });
@@ -392,7 +395,7 @@
     const off = S.events.on('change', (k) => {
       if (k !== 'paper' && k !== 'undo' && k !== 'redo' && k !== 'load') return;
       const p = pa();
-      preset.setValue(p.preset); orient.setValue(p.landscape ? 'l' : 'p');
+      preset.setValue(p.preset); orient.setValue(p.w > p.h ? 'l' : 'p');
       fw.setValue(p.w); fh.setValue(p.h); fx.setValue(p.x); fy.setValue(p.y); show.setValue(p.visible);
     });
     return { el, dispose: off };
@@ -408,7 +411,7 @@
     const pa = S.project.paper;
     const pr = S.PAPER_PRESETS.find(x => x.id === pa.preset);
     if (!pr || pa.preset === 'custom') return U.fmt(pa.w, 0) + ' × ' + U.fmt(pa.h, 0) + ' mm';
-    return pr.name.split(' (')[0] + ' · ' + (pa.landscape ? 'landscape' : 'portrait');
+    return pr.name.split(' (')[0] + ' · ' + (pa.w > pa.h ? 'landscape' : 'portrait');
   };
 
   UI.buildRightPanel = function (host) {

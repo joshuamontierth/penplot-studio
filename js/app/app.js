@@ -354,6 +354,7 @@
         const split = opts.splitColors !== undefined ? opts.splitColors : PP.UI.importPrefs().splitColors;
         const fill = opts.fillShapes !== undefined ? opts.fillShapes : PP.UI.importPrefs().fillShapes;
         const base = file.name.replace(/\.svg$/i, '');
+        if (!split && !App.requireEditableLayer()) return; // one object onto the active layer
         S.checkpoint();
         const objs = [];
         if (split && groups.length > 1) {
@@ -524,7 +525,9 @@
 
     // plot summary (was a right-panel section): time, pens, line length; the chip lists anything to look at
     let notes = [];
-    const summarize = U.debounce(() => {
+    let chipPop = null;
+    const summarizeNow = () => {
+      if (chipPop) { chipPop.close(); chipPop = null; }
       let pl;
       try { pl = App.buildPlan(); } catch (e) { console.error(e); return; }
       const st = pl.stats, n = pl.jobs.length;
@@ -535,18 +538,19 @@
       const hidden = S.project.layers.filter(l => !l.visible && S.project.objects.some(o => o.layerId === l.id));
       if (hidden.length) notes.push(['info', hidden.length + ' hidden layer(s) will not be plotted.']);
       PP.GCode.validateProfile(pl.profile).forEach(e => notes.push(['error', e]));
-      const worst = notes.some(x => x[0] === 'error') ? 'error' : notes.some(x => x[0] === 'warn') ? 'warn' : !n ? 'info' : 'ok';
+      const worst = notes.some(x => x[0] === 'error') ? 'error' : notes.some(x => x[0] === 'warn') ? 'warn' : notes.length ? 'info' : 'ok';
       check.className = 'st-check ' + worst;
       U.clear(check);
       check.append(PP.UI.icon(worst === 'ok' ? 'check' : worst === 'info' ? 'help' : 'warn', 12),
-        h('span', null, worst === 'ok' ? 'Ready to plot' : !n ? 'Nothing to plot' : notes.length + (notes.length === 1 ? ' note' : ' notes')));
-    }, 300);
+        h('span', null, worst === 'ok' ? 'Ready to plot' : !n && notes.length === 1 ? 'Nothing to plot' : notes.length + (notes.length === 1 ? ' note' : ' notes')));
+    };
+    const summarize = U.debounce(summarizeNow, 300);
     function showChecks() {
       if (!notes.length) return;
-      PP.UI.popover(check, h('div', { class: 'warns popover-pad' }, notes.map(([t, m]) => h('div', { class: 'warn-item ' + t }, PP.UI.icon(t === 'info' ? 'help' : 'warn', 14), h('span', null, m)))), { align: 'right' });
+      chipPop = PP.UI.popover(check, h('div', { class: 'warns popover-pad' }, notes.map(([t, m]) => h('div', { class: 'warn-item ' + t }, PP.UI.icon(t === 'info' ? 'help' : 'warn', 14), h('span', null, m)))), { align: 'right' });
     }
     S.events.on('change', summarize); events.on('profile', summarize); events.on('prefs', summarize);
-    summarize();
+    summarizeNow();
     App.view.events.on('cursor', (w) => {
       if (!w) { pos.textContent = 'X —  Y —'; noz.textContent = ''; return; }
       const p = App.profile();
@@ -603,6 +607,7 @@
     }
     if (PP.UI.hasModal()) return;
     if (isTyping(e)) return;
+    if (document.querySelector('.popover')) return; // a menu is open: keys belong to it
     if (PP.Preview.active) return; // no editing while previewing (Escape closes the preview)
 
     if (view.tool && view.tool.key && view.tool.key(e)) { e.preventDefault(); view.invalidate(); return; }
@@ -620,6 +625,7 @@
       return;
     }
     if (e.key === ' ') {
+      if (e.target && e.target.closest && e.target.closest('button')) return; // Space presses a focused button
       if (!view.spaceDown) { view.spaceDown = true; view.canvas.style.cursor = 'grab'; }
       e.preventDefault();
       return;
@@ -668,7 +674,7 @@
       const gone = prevSel.filter(id => !S.selection.includes(id)).map(id => S.get(id))
         .filter(o => o && o.type === 'text' && !String(o.text || '').trim());
       prevSel = S.selection.slice();
-      if (gone.length) S.remove(gone.map(o => o.id));
+      if (gone.length) S.remove(gone.map(o => o.id), { history: false }); // undo brings the text back, not an empty object
     });
     // Save / Open / Download work everywhere, even while typing in a field (fields stop keydown propagation).
     // Capture phase, before those fields; blurring commits the field's value first.
@@ -704,7 +710,8 @@
     window.addEventListener('pagehide', () => S.flushAutosave());
 
     // Preload the default font, restore uploaded fonts and the last session
-    PP.Fonts.restoreSystemFonts();
+    // before the autosave: text in an installed font would otherwise be laid out in the fallback font
+    await PP.Fonts.restoreSystemFonts();
     PP.Fonts.load(PP.Fonts.DEFAULT).catch((e) => PP.UI.toast('Could not load the Hershey fonts (' + e.message + '). Check your internet connection - text needs them.', 'error', 8000));
     PP.Fonts.restoreCustomFonts();
     const restored = await S.restoreAutosave();

@@ -43,9 +43,9 @@
     const cs = getComputedStyle(document.documentElement);
     const v = (name, def) => cs.getPropertyValue(name).trim() || def;
     C.bg = v('--canvas', C.bg);
-    C.sel = v('--accent', C.sel);
-    C.reach = v('--accent', C.reach);
-    C.selFill = v('--sel-fill', C.selFill);
+    C.sel = v('--canvas-accent', C.sel);
+    C.reach = v('--canvas-accent', C.reach);
+    C.selFill = v('--canvas-sel-fill', C.selFill);
     C.label = v('--muted', C.label);
   }
 

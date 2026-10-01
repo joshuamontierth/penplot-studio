@@ -16,6 +16,10 @@
   --accent-ink: #ffffff;
   --accent-soft: rgba(47, 91, 210, 0.10);
   --sel-fill: rgba(47, 91, 210, 0.05);
+  /* the bed and paper are light in both themes: canvas overlays keep the light-theme accent */
+  --canvas-accent: #2f5bd2;
+  --canvas-sel-fill: rgba(47, 91, 210, 0.06);
+  --swatch-ring: rgba(0, 0, 0, 0.25);
   --danger: #b4261f;
   --warn: #9a6400;
   --info: #2f5bd2;
@@ -35,7 +39,7 @@
     --bg: #1d1e22; --canvas: #18191c; --panel: #222327; --panel-2: #2a2b30; --panel-3: #33353a;
     --border: #34363b; --border-2: #46484e;
     --text: #e9eaec; --text-2: #c3c5ca; --muted: #979ba3;
-    --accent: #8aa8ff; --accent-2: #9db6ff; --accent-ink: #0e1630; --accent-soft: rgba(138, 168, 255, 0.15); --sel-fill: rgba(138, 168, 255, 0.07);
+    --accent: #8aa8ff; --accent-2: #9db6ff; --accent-ink: #0e1630; --accent-soft: rgba(138, 168, 255, 0.15); --sel-fill: rgba(138, 168, 255, 0.07); --swatch-ring: rgba(255, 255, 255, 0.4);
     --danger: #f08a80; --warn: #f3c66b; --info: #8aa8ff;
     --ok-fg: #9fdcb2; --ok-bg: rgba(110, 200, 140, 0.14);
     --warn-fg: #f3c66b; --warn-bg: rgba(243, 198, 107, 0.12);
@@ -236,8 +240,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; m
 .layer-grip { display: flex; color: var(--muted); cursor: grab; flex: none; }
 .swatch { width: 16px; height: 16px; border: none; padding: 0; background: none; cursor: pointer; border-radius: 50%; overflow: hidden; flex: none; }
 .swatch::-webkit-color-swatch-wrapper { padding: 0; }
-.swatch::-webkit-color-swatch { border: 1px solid rgba(0,0,0,.25); border-radius: 50%; }
-.swatch::-moz-color-swatch { border: 1px solid rgba(0,0,0,.25); border-radius: 50%; }
+.swatch::-webkit-color-swatch { border: 1px solid var(--swatch-ring); border-radius: 50%; }
+.swatch::-moz-color-swatch { border: 1px solid var(--swatch-ring); border-radius: 50%; }
 .layer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-rename { flex: 1; padding: 3px 6px !important; }
 .layer-count { font-size: 11px; color: var(--muted); min-width: 16px; text-align: right; }
@@ -378,7 +382,8 @@ textarea.code { font: 12px/1.5 var(--mono); background: var(--bg); color: var(--
 
 @media (max-width: 1280px) {
   #main { grid-template-columns: 44px 256px minmax(300px, 1fr) 264px; }
-  .pill, .project-name { display: none; }
+  .pill { display: none; }
+  .project-name { width: 110px; }
 }
 @media (max-width: 1050px) {
   .btn-preview span:last-child { display: none; }

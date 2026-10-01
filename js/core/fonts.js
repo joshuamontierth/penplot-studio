@@ -214,7 +214,9 @@
       reg(id, fd.fullName || fd.postscriptName, 'On this computer', 'outline', { type: 'system' });
       added++;
     }
-    if (added) events.emit('catalog');
+    // 'loaded' with no id clears every cached text layout: objects that used a not-yet-registered installed font
+    // were laid out in the fallback font
+    if (added) { events.emit('catalog'); events.emit('loaded', null); }
     return systemFonts.size;
   }
   /** At startup: list installed fonts without asking, if permission was already granted. */

@@ -250,7 +250,7 @@
     }, true);
     // the preview shows a plan built when it opened: close it when the design or printer settings change
     const stale = (k) => {
-      if (!P.active || k === 'selection' || k === 'transform') return;
+      if (!P.active || k === 'selection' || k === 'transform' || k === 'active-layer' || k === 'name') return;
       P.stop();
       PP.UI.toast('Preview closed because the design changed. Press Preview to see the new plan.', 'info');
     };
