@@ -185,3 +185,27 @@ test('calibration: frame dry run and offset finder download simulator-clean file
   await expect(dialog(page, 'Calibration').locator('.seg-btn.on')).toHaveText('2 Offset finder');
   expect(consoleProblems).toEqual([]);
 });
+
+test('the preview pauses with a real-speed click and with Space, even with its buttons focused', async ({
+  page,
+  consoleProblems,
+}) => {
+  const state = () => page.evaluate(() => ({ active: PP.Preview.active, playing: PP.Preview.playing }));
+  // the header button keeps focus after the click: Space used to "click" it again on key-up and close the preview
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect.poll(state).toEqual({ active: true, playing: true });
+  await page.keyboard.press('Space');
+  await expect.poll(state).toEqual({ active: true, playing: false });
+  await page.keyboard.press('Space');
+  await expect.poll(state).toEqual({ active: true, playing: true });
+  // a click as slow as a person's (the icon used to be rebuilt every frame, which swallowed the click)
+  const box = await page.getByRole('button', { name: 'Play / pause (Space)' }).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(120);
+  await page.mouse.up();
+  await expect.poll(state).toEqual({ active: true, playing: false });
+  await page.keyboard.press('Space');
+  await expect.poll(state).toEqual({ active: true, playing: true });
+  expect(consoleProblems).toEqual([]);
+});

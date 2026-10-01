@@ -205,8 +205,14 @@
     const st = P._state;
     const n = P.items.length;
     els.info.textContent = 'Path ' + Math.min(n, (st ? st.idx : 0) + (st && st.idx < n ? 1 : 0)) + ' / ' + n + (st && st.idx < n ? ' • ' + P.plan.jobs[P.items[st.idx].ji].name : '');
-    els.play.innerHTML = '';
-    els.play.appendChild(PP.UI.icon(P.playing ? 'pause' : 'play'));
+    // swap the icon only when the state changes: rebuilding it every frame removed the element under the pointer
+    // between mousedown and mouseup, so a real (slower than one frame) click never fired and the preview could not
+    // be paused with the mouse
+    if (els.play._playing !== P.playing) {
+      els.play._playing = P.playing;
+      els.play.innerHTML = '';
+      els.play.appendChild(PP.UI.icon(P.playing ? 'pause' : 'play'));
+    }
   }
 
   function tick(ts) {
@@ -233,6 +239,14 @@
       if (e.key === ' ') { e.preventDefault(); e.stopImmediatePropagation(); P.togglePlay(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); e.stopImmediatePropagation(); P.step(1); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopImmediatePropagation(); P.step(-1); }
+    }, true);
+    // Space also "clicks" the focused button when the key is released (the header's Preview button, or the play
+    // button just clicked): that undid the pause or closed the preview. Swallow it so Space only toggles play.
+    document.addEventListener('keyup', (e) => {
+      if (!P.active || e.key !== ' ' || PP.UI.hasModal()) return;
+      const tag = e.target && e.target.tagName;
+      if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && !P.bar.contains(e.target)) return;
+      e.preventDefault(); e.stopImmediatePropagation();
     }, true);
     // the preview shows a plan built when it opened: close it when the design or printer settings change
     const stale = (k) => {
