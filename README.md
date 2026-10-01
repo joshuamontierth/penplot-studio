@@ -54,6 +54,16 @@ tooling runs on **Node 24 LTS** on Windows and Linux.
 golden file. If a deliberate generator change alters the G-code, review the diff and run `npx vitest -u`.
 CI (`.github/workflows/ci.yml`) runs all of this on Ubuntu and Windows, plus a nightly deep fuzz.
 
+### Desktop app
+
+`desktop/` wraps the app in Electron (own `package.json`, so the root `npm ci` stays light) and serves it from
+`app://penplot/`. Run `npm run desktop:install` once, then `npm run desktop:start` (dev window) or `npm run desktop:dist`
+(installers for the OS you are on; `desktop:pack` is a quick unpacked build). Artifacts land in `desktop/dist/`:
+`PenPlot-Studio-<version>-linux-*.AppImage` and `.tar.gz` on Linux, `-win-x64-portable.exe` and `PenPlot-Studio-Setup-*.exe`
+on Windows. Each OS has to build its own: the **Desktop app** workflow does that on `v*` tags and attaches the files to the
+GitHub Release. Builds are unsigned (SmartScreen warns). On Ubuntu 24.04+ the AppImage and `desktop:start` drop to
+`--no-sandbox` automatically; run the `.tar.gz` build with `--no-sandbox` yourself.
+
 ## Features
 
 | Area | What you get |
@@ -146,6 +156,7 @@ test/unit/  Vitest suites (Node + jsdom) and the golden G-code file
 e2e/        Playwright specs (UI + headless browser suite)
 scripts/    serve.mjs (dev server, live reload), vendor.mjs
 serve.py    no-cache server for machines with only Python
+desktop/    Electron shell (main.js, prepare.mjs, builder config), see Desktop app
 HANDOFF.md  detailed status, open questions, next steps
 ```
 

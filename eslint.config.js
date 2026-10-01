@@ -37,4 +37,13 @@ export default [
     files: ['test/**/*.js'],
     languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: { ...globals.node, ...globals.browser } },
   },
+  {
+    // Electron shell (desktop/): build output is the staged copy of the app, not source
+    ignores: ['desktop/app/', 'desktop/dist/'],
+  },
+  {
+    // main.js is CommonJS and runs in Electron's main process (Node)
+    files: ['desktop/**/*.js'],
+    languageOptions: { ecmaVersion: 'latest', sourceType: 'commonjs', globals: globals.node },
+  },
 ];

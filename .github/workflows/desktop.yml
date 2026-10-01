@@ -1,0 +1,78 @@
+# Builds the Electron desktop app (desktop/) natively on each OS, no cross-compiling: AppImage + tar.gz on
+# Linux, portable .exe + NSIS installer on Windows. Runs on version tags (v1.2.3), where the files are also
+# attached to a GitHub Release, and on demand (workflow_dispatch) where they are only kept as run artifacts.
+name: Desktop app
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - name: Build (version taken from the tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          TAG_VERSION: ${{ substring(github.ref_name, 1) }}
+        run: npm run dist -- "--config.extraMetadata.version=$TAG_VERSION"
+      - name: Build
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npm run dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.tar.gz
+            desktop/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # only this job may create the release and upload to it
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: artifacts
+          merge-multiple: true
+      - name: Create the release (if needed) and attach the files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          gh release upload "$TAG" artifacts/* --clobber

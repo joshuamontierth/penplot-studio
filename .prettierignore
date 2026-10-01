@@ -6,6 +6,8 @@ test-results/
 playwright-report/
 blob-report/
 package-lock.json
+desktop/app/
+desktop/dist/
 test/unit/__snapshots__/
 
 # Hand-formatted app code and docs: kept out of Prettier on purpose (a reformat would expand the

@@ -24,7 +24,14 @@
     "test:e2e:full": "cross-env FUZZ_N=200 playwright test e2e/browser-suite.spec.js",
     "test:e2e:ui": "playwright test --ui",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run test:e2e",
-    "vendor": "node scripts/vendor.mjs"
+    "vendor": "node scripts/vendor.mjs",
+    "desktop:install": "npm --prefix desktop ci",
+    "desktop:prepare": "npm --prefix desktop run stage",
+    "desktop:start": "npm --prefix desktop start",
+    "desktop:pack": "npm --prefix desktop run pack",
+    "desktop:dist": "npm --prefix desktop run dist",
+    "desktop:dist:linux": "npm --prefix desktop run dist:linux",
+    "desktop:dist:win": "npm --prefix desktop run dist:win"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

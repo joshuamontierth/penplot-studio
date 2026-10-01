@@ -23,3 +23,7 @@ Desktop.ini
 .claude/*
 !.claude/launch.json
 !.claude/settings.json
+
+# Electron desktop app: staged copy of the web app and installer output (desktop/node_modules is covered above)
+desktop/app/
+desktop/dist/
