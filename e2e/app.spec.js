@@ -156,9 +156,9 @@ test('audit fixes: check chip, Align fits, inspector follows layers, one undo pe
     }),
   );
   const hatch = page.locator('#right-panel .sec', { hasText: 'Hatch fill' });
-  if (await hatch.locator('.sec.collapsed').count())
-    await hatch.locator('.sec-head', { hasText: 'Hatch fill' }).click();
   const spacing = hatch.locator('.field', { hasText: 'Line spacing' }).locator('input.num');
+  // enabling the fill rebuilds the inspector with the Hatch fill section open: wait for it (don't toggle it)
+  await expect(spacing).toBeVisible();
   await spacing.fill('3');
   await spacing.press('Enter');
   const fillSpacing = () => page.evaluate(() => PP.Store.project.objects[0].fill.spacing);
