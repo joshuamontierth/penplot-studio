@@ -31,7 +31,8 @@
     "desktop:pack": "npm --prefix desktop run pack",
     "desktop:dist": "npm --prefix desktop run dist",
     "desktop:dist:linux": "npm --prefix desktop run dist:linux",
-    "desktop:dist:win": "npm --prefix desktop run dist:win"
+    "desktop:dist:win": "npm --prefix desktop run dist:win",
+    "desktop:test": "node scripts/desktop-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
