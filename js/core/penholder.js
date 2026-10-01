@@ -99,6 +99,40 @@
     return best;
   }
 
+  /**
+   * How far the bore may grow on one slice, by casting rays out from the axis every 2 degrees. Where a ray starts
+   * in the bore's own wall (material from the bore radius, or a coaxial chamfer), keep minWall of it; where it
+   * first meets something further out (a link between spring rings, the far side of a slot), stop just short.
+   * A split (C-shaped) ring is its own wall, not an obstacle - the nearest-edge measure got that wrong.
+   */
+  function rayLimit(polys, cx, cy, r0, minWall, isCoaxialHole) {
+    const coax = polys.map(isCoaxialHole);
+    let lim = Infinity;
+    for (let a = 0; a < 360; a += 2) {
+      const ux = Math.cos(a * Math.PI / 180), uy = Math.sin(a * Math.PI / 180);
+      const hits = [];
+      polys.forEach((p, pi) => {
+        for (let i = 0; i < p.length; i++) {
+          const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length];
+          const ex = x2 - x1, ey = y2 - y1, den = ux * ey - uy * ex;
+          if (Math.abs(den) < 1e-12) continue;
+          const wx = x1 - cx, wy = y1 - cy;
+          const t = (wx * ey - wy * ex) / den, sP = (wx * uy - wy * ux) / den;
+          if (t > 0 && sP >= 0 && sP < 1) hits.push([t, pi]);
+        }
+      });
+      if (!hits.length) continue;
+      hits.sort((p, q) => p[0] - q[0]);
+      // the axis is in air (it is on the pen's path): hits alternate entering and leaving material
+      const [entry, ep] = hits[0];
+      const exit = hits.length > 1 ? hits[1][0] : Infinity;
+      // within 0.5 mm of the bore radius it is the bore's own wall (faceting, a split ring's slot edges)
+      const ownWall = entry <= r0 + 0.5 || coax[ep];
+      lim = Math.min(lim, ownWall ? exit - minWall : entry - 0.05);
+    }
+    return lim;
+  }
+
   /** Find the pen bore: the round hole seen in the most cross-sections, on any of the three axes. */
   function findBore(api, m0) {
     let best = null;
@@ -141,14 +175,17 @@
       const polys = m.slice(z).toPolygons();
       const isBore = polys.some(p => { const h = roundHole(p); return h && Math.hypot(h.cx - cx, h.cy - cy) < 0.3 && Math.abs(h.d - d) < 0.35; });
       const state = isBore ? 'bore' : winding(polys, cx, cy) > 0 ? 'solid' : 'air';
-      // room around the axis: distance to anything that is not the bore itself (or a coaxial chamfer)
+      // room: distance to anything that is not the bore itself (or a coaxial chamfer) - decides whether the
+      // original pen could pass here; grow: how far the bore may grow on this slice (ray casting)
       const room = state === 'solid' ? 0 : nearest(polys, cx, cy, isCoaxialHole);
-      slices.push({ z, state, room });
+      const grow = state === 'solid' ? 0 : rayLimit(polys, cx, cy, d / 2, minWall, isCoaxialHole);
+      slices.push({ z, state, room, grow });
     }
     // The pen's path: runs of slices the ORIGINAL pen could pass (bore, or air with nothing nearer the axis than
     // the old bore) that contain bore. Air next to a nearby block or arm is not on the path (the pen never went
     // there), so it is neither cut nor counted against the size limit. Plug runs: consecutive bore slices.
-    const passable = (s) => s.state === 'bore' || (s.state === 'air' && s.room >= d / 2 - 0.05);
+    // a split ring's own inner wall sits right at the bore radius: still passable for the original pen
+    const passable = (s) => s.state === 'bore' || (s.state === 'air' && s.room >= d / 2 - 0.15);
     const paths = [], plugs = [];
     let i = 0;
     while (i < slices.length) {
@@ -158,10 +195,8 @@
       if (slices.slice(i, j + 1).some(s => s.state === 'bore')) {
         const z0 = i === 0 ? bb.min[2] - 1 : slices[i].z - STEP / 2;
         const z1 = j === slices.length - 1 ? bb.max[2] + 1 : slices[j].z + STEP / 2;
-        // largest radius along this path: around the bore keep a wall; in air (gaps, open ends) just don't cut into
-        // whatever is there (spring arms run flush with the bore)
         let rMax = Infinity;
-        for (let k = i; k <= j; k++) rMax = Math.min(rMax, slices[k].state === 'bore' ? slices[k].room - minWall : slices[k].room - 0.05);
+        for (let k = i; k <= j; k++) rMax = Math.min(rMax, slices[k].grow);
         paths.push({ z0, z1, rMax });
         for (let k = i; k <= j; k++) {
           if (slices[k].state !== 'bore') continue;

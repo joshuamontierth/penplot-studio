@@ -542,13 +542,14 @@ Record every answer. They settle the assumptions in §3.
       are found from cross-sections.
     - Each stretch of bore is filled with a plug, and a new bore is cut along the pen's path through the part. The
       path runs through chamfers and air gaps and stops at solid material or where the original pen couldn't pass.
-    - Limits: a 1.2 mm wall where material surrounds the bore. In air (spring gaps, open ends) the new bore must not
-      cut into anything.
+    - Limits come from rays cast out from the axis every 2° on each slice. Where the ray starts in the bore's own
+      wall, keep 1.2 mm of wall. Where it first meets something else (the links between spring rings), stop short.
+      (A nearest-edge measure misread the spring's split ring as an obstacle.)
     - With the user's Falu parts:
-      - cartridge bore 10.56 mm, max 12.1;
-      - spring rings 11.47 mm in 8 rings, max 11.3, because its arms run flush with the bore.
-    - With the default fit (0.4) and the designed spring margin (+1.31 over the pen), pens up to about 9.9 mm work.
-      A lower spring clearance allows more.
+      - cartridge bore 10.56 mm, max 12.1. The body is Ø17.3 mm, but four grooves neck it to Ø14.9 mm;
+      - spring rings 11.47 mm in 8 rings, max 12.7.
+    - With the default fit (0.4) and the designed spring margin (+1.31 over the pen), pens up to about 11.3 mm
+      work. The target is a Pilot G2 without its rubber grip.
     - The STLs stay out of git (`experiments/stls/`), because of the designer's license.
 16. Electron desktop app in `desktop/`: `npm run desktop:dist` and `.github/workflows/desktop.yml`.
 
