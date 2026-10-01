@@ -33,3 +33,5 @@ desktop/dist/
 
 # your own Bambu .gcode.3mf samples (contain your printer settings): never committed
 experiments/3mf-samples/
+experiments/stls/
+experiments/pen-holder/

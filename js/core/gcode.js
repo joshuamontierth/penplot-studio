@@ -65,7 +65,7 @@
   const BUILTIN_PROFILES = [
     Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', shortName: 'X1C', door: true, builtin: true, mount: FALU_MOUNT }),
     Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', shortName: 'X1', door: true, builtin: true, mount: FALU_MOUNT }),
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', shortName: 'P1S', builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', shortName: 'P1S', door: true, builtin: true, mount: FALU_MOUNT }),
     // A1: open bed-slinger (the bed moves in Y, the toolhead in X and Z). No door or enclosure walls for the holder
     // to hit, so the whole bed is the nozzle's safe zone; the pen sits in front of the nozzle, which leaves a
     // 256 x 228 mm plot area (3dplotter.xyz). No purge chute, and no X1/P1 G380 start preamble.

@@ -28,6 +28,16 @@ const PACKAGES = [
     ],
   },
   {
+    // mesh booleans for the pen-holder tool (resizes the pen bore of your holder STLs)
+    spec: 'manifold-3d@3.5.4',
+    dest: 'manifold',
+    files: [
+      ['manifold.js', 'manifold.js'],
+      ['manifold.wasm', 'manifold.wasm'],
+      ['LICENSE', 'LICENSE'],
+    ],
+  },
+  {
     spec: 'opentype.js@1.3.4',
     dest: 'opentype',
     files: [

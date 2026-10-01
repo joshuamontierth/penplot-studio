@@ -41,7 +41,8 @@
 
     const tabsDef = [
       ['Pen mount', () => [
-        h('p', { class: 'hint' }, draft.mount || ''),
+        h('div', { class: 'row gap' }, h('p', { class: 'hint grow' }, draft.mount || ''),
+          UI.btn('Pen holder for your pen…', () => UI.openPenHolder(), { small: true, title: 'Resize the pen tube of your holder STLs for a measured pen' })),
         h('div', { class: 'row gap-lg' },
           h('div', { class: 'grow' },
             F('penOffsetX', 'Pen offset X (right +, left -)', 'mm', { step: 0.1, decimals: 2, title: 'How far the pen tip is to the RIGHT of the nozzle (negative = left). Falu mount: about -28' }),
@@ -457,7 +458,7 @@
     const p = PP.App.profile();
     return [
       h('p', { class: 'lead' }, 'PenPlot Studio turns your Bambu Lab X1 Carbon into a pen plotter. Design here, download G-code and plot from the SD card - no firmware changes.'),
-      step(1, 'Install the pen mount', 'Print the Falu "Head Mount V1 - Series X & P" and fit a pen (Stabilo Point 88, Pilot G2, Micron...). Do not clip the module onto the printer yet - that happens at the first pause.'),
+      step(1, 'Install the pen mount', 'Print the Falu "Head Mount V1 - Series X & P" and fit a pen (Stabilo Point 88, Pilot G2, Micron...). Do not clip the module onto the printer yet - that happens at the first pause. Using a thicker or thinner pen? Printer settings → Pen mount → Pen holder for your pen resizes the pen tube of your holder STLs.'),
       step(2, 'Calibrate once', 'Before your first real plot, work through the ', h('b', null, 'Calibration'), ' tab: an empty run, a dry-run frame test and the offset finder. It takes about 15 minutes and confirms the pen offset for your mount.'),
       step(3, 'Design', 'Use the Text, Draw, Image, Patterns and Import tabs. Each layer is one pen: layers plot top to bottom with a pause to swap pens.'),
       step(4, 'Preview', 'Preview replays the actual G-code: pen strokes, travel moves and the safety check.'),

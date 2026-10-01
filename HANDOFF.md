@@ -537,6 +537,19 @@ Record every answer. They settle the assumptions in §3.
     - Z tuning is demoted: no quick Z fields, and the Z test is under "Fine-tuning" in Help.
     - The Image tab is a file chooser plus a trace-style grid.
     - "Installed fonts" adds system fonts through the Local Font Access API (Chrome/Edge and the desktop app).
+17. **Pen-holder tool** (`js/core/penholder.js`, `js/ui/penholderdialog.js`, manifold-3d in `vendor/manifold/`):
+    - It resizes the round pen bore of the user's own cartridge and spring STLs. The bore axis, center and diameter
+      are found from cross-sections.
+    - Each stretch of bore is filled with a plug, and a new bore is cut along the pen's path through the part. The
+      path runs through chamfers and air gaps and stops at solid material or where the original pen couldn't pass.
+    - Limits: a 1.2 mm wall where material surrounds the bore. In air (spring gaps, open ends) the new bore must not
+      cut into anything.
+    - With the user's Falu parts:
+      - cartridge bore 10.56 mm, max 12.1;
+      - spring rings 11.47 mm in 8 rings, max 11.3, because its arms run flush with the bore.
+    - With the default fit (0.4) and the designed spring margin (+1.31 over the pen), pens up to about 9.9 mm work.
+      A lower spring clearance allows more.
+    - The STLs stay out of git (`experiments/stls/`), because of the designer's license.
 16. Electron desktop app in `desktop/`: `npm run desktop:dist` and `.github/workflows/desktop.yml`.
 
 ---

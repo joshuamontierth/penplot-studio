@@ -88,6 +88,15 @@ try {
   });
   check('welcome design builds G-code that passes the simulator', gcode.ok && gcode.strokes > 0, JSON.stringify(gcode));
 
+  const mesh = await page.evaluate(async () => {
+    const api = await PP.PenHolder.load(); // dynamic import + WebAssembly over app://
+    const m = api.Manifold.cube([1, 1, 1]);
+    const v = m.volume();
+    m.delete();
+    return v;
+  });
+  check('3D library for the pen-holder tool loads', Math.abs(mesh - 1) < 1e-9, String(mesh));
+
   const isolated = await page.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined');
   check('renderer has no Node access', isolated);
 

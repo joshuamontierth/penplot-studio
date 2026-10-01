@@ -146,7 +146,7 @@
   /** allowEmpty: an emptied field emits onChange(null) (e.g. "use the default") instead of reverting. */
   function numberField({ label, value, min, max, step = 1, unit, slider = false, onInput, onChange, title, decimals, allowEmpty = false, placeholder }) {
     let current = value; // last committed value: an invalid entry reverts to this, not to the initial value
-    const fmtV = (v) => decimals !== undefined ? U.fmt(v, decimals) : String(v);
+    const fmtV = (v) => (v === '' || v == null ? '' : decimals !== undefined ? U.fmt(v, decimals) : String(v)); // '' = empty (allowEmpty)
     const num = h('input', { type: 'number', class: 'num', value: fmtV(value), min, max, step, title });
     if (placeholder) num.placeholder = placeholder;
     const wrap = h('div', { class: 'field' + (slider ? ' field-slider' : '') });
