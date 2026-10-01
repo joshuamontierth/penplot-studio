@@ -84,16 +84,22 @@
     const fillSp = UI.numberField({ label: 'Hatch spacing', unit: 'mm', value: 0.6, min: 0.2, max: 5, step: 0.05, slider: true, decimals: 2, onChange: (v) => setFill({ spacing: v }) });
     const fillBox = h('div', { class: 'sub' }, fillSp);
 
-    const addBtn = UI.btn('Add text to bed', () => addText(), { primary: true, icon: 'plus' });
+    const addBtn = UI.btn('Add to bed', () => addText(), { icon: 'plus' });
     const status = h('div', { class: 'hint' });
 
     const upBtn = UI.btn('Upload font', () => uploadFont(), { icon: 'upload', small: true, title: 'Upload a .ttf or .otf font (drawn as outlines)' });
     const handBtn = UI.btn('My Handwriting', () => UI.openHandwriting(), { icon: 'hand', small: true, title: 'Draw your own letters and use them as a font' });
+    const sysBtn = UI.btn('Installed fonts', async () => {
+      try {
+        const n = await PP.Fonts.listSystemFonts();
+        UI.toast(n + ' fonts from this computer are in the font list (drawn as outlines).', 'info');
+      } catch (e) { UI.toast(e.message, 'warn'); }
+    }, { small: true, title: 'Add the fonts installed on this computer to the font list' });
     const customList = h('div', { class: 'font-list' });
 
     pane.append(
       UI.section('Text', [ta, status]),
-      UI.section('Font', [fontSel, preview, h('div', { class: 'grid2' }, upBtn, handBtn), customList]),
+      UI.section('Font', [fontSel, preview, h('div', { class: 'btn-row wrap' }, sysBtn, upBtn, handBtn), customList]),
       UI.section('Layout', [size, ls, lh, h('div', { class: 'field' }, h('label', null, 'Alignment'), align), arcOn, arcBox]),
       UI.section('Fill', [fillCb, fillBox, h('div', { class: 'hint' }, 'Single-stroke (Hershey/EMS) fonts are drawn as one line per stroke - best for pen plotting. Hatch fill is for uploaded outline fonts.')], { collapsible: true, collapsed: true }),
       h('div', { class: 'panel-actions' }, addBtn),
@@ -172,8 +178,8 @@
       fillCb.setValue(!!(o && o.fill && o.fill.enabled));
       if (o && o.fill) fillSp.setValue(o.fill.spacing);
       fillBox.style.display = fillCb.input.checked ? '' : 'none';
-      addBtn.querySelector('span:last-child').textContent = o ? 'Add as new text' : 'Add text to bed';
-      status.textContent = o ? 'Editing the selected text object - changes apply live.' : 'Add it to the bed below, or press T and click where it should go.';
+      addBtn.querySelector('span:last-child').textContent = o ? 'Add as new text' : 'Add to bed';
+      status.textContent = o ? 'Editing the selected text' : '';
       drawPreview();
     }
 
@@ -259,20 +265,20 @@
   // IMAGE
   // ---------------------------------------------------------------------------
   function buildImage(pane) {
-    const drop = h('div', { class: 'dropzone', tabindex: '0' },
-      UI.icon('image', 34), h('b', null, 'Upload an image'), h('span', null, 'JPG, PNG, GIF, WebP - or drop it anywhere'));
-    drop.addEventListener('click', async () => { const f = await U.pickFile('image/*'); if (f) UI.openImageTrace(f); });
-    drop.addEventListener('keydown', async (e) => { if (e.key === 'Enter') { const f = await U.pickFile('image/*'); if (f) UI.openImageTrace(f); } });
     const modes = PP.ImageTrace ? PP.ImageTrace.modes : [];
-    pane.append(
-      UI.section('Image to pen paths', [drop]),
-      UI.section('Tracing modes', [h('ul', { class: 'tips' }, modes.length ? modes.map(m => h('li', null, h('b', null, m.name + ': '), m.description)) : h('li', null, 'Image tracing module not loaded.'))]),
-      UI.section('Tips', [h('ul', { class: 'tips' },
-        h('li', null, 'Line art, logos and coloring-book pages work best with Outline or Centerline.'),
-        h('li', null, 'Photos look great with Photo hatch, Squiggle or Spiral.'),
-        h('li', null, 'Already have a vector file? Use the Import tab for SVG - it is sharper than tracing.'),
-      )]),
-    );
+    let mode = (PP.Storage.getLocal('trace', {}).mode) || (modes[0] && modes[0].id);
+    const open = async () => { const f = await U.pickFile('image/*'); if (f) UI.openImageTrace(f, { mode }); };
+    const drop = h('button', { class: 'dropzone' }, UI.icon('image', 22), h('span', null, 'Choose an image'));
+    drop.addEventListener('click', open);
+    const grid = h('div', { class: 'mode-grid', role: 'radiogroup', 'aria-label': 'Trace style' });
+    const paint = () => grid.querySelectorAll('.mode-btn').forEach(b => { const on = b.dataset.mode === mode; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+    for (const m of modes) {
+      grid.appendChild(h('button', { class: 'mode-btn', role: 'radio', title: m.description, dataset: { mode: m.id }, onclick: () => { mode = m.id; paint(); } }, m.name));
+    }
+    paint();
+    pane.append(UI.section('Image', [drop,
+      h('div', { class: 'field' }, h('label', null, 'Trace style'), grid),
+      h('p', { class: 'hint' }, 'Outline and Centerline for line art; the others for photos. Drop an image on the bed to start too.')]));
   }
 
   // ---------------------------------------------------------------------------

@@ -8,6 +8,10 @@
   // Icons (24x24, stroke based)
   // ---------------------------------------------------------------------------
   const ICONS = {
+    more: '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
+    grip: '<circle cx="9" cy="6" r="1.1" fill="currentColor"/><circle cx="15" cy="6" r="1.1" fill="currentColor"/><circle cx="9" cy="12" r="1.1" fill="currentColor"/><circle cx="15" cy="12" r="1.1" fill="currentColor"/><circle cx="9" cy="18" r="1.1" fill="currentColor"/><circle cx="15" cy="18" r="1.1" fill="currentColor"/>',
+    paper: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/>',
+    chevron: '<path d="M6 9l6 6 6-6"/>',
     select: '<path d="M5 3l14 8-6 1.8L10 19z"/><path d="M13 13l5 6"/>',
     pan: '<path d="M8 13V5.5a1.5 1.5 0 013 0V12"/><path d="M11 11.5V4.5a1.5 1.5 0 013 0V12"/><path d="M14 11.5v-6a1.5 1.5 0 013 0V14"/><path d="M8 13l-1.6-1.7a1.6 1.6 0 00-2.4 2.1L8 19a5 5 0 004 2h1a5 5 0 005-5v-2"/>',
     pen: '<path d="M4 20l1-5L16.5 3.5a2.1 2.1 0 013 3L8 18z"/><path d="M14.5 5.5l3 3"/>',
@@ -140,10 +144,11 @@
   // ---------------------------------------------------------------------------
   /** Labeled number input with optional slider. */
   /** allowEmpty: an emptied field emits onChange(null) (e.g. "use the default") instead of reverting. */
-  function numberField({ label, value, min, max, step = 1, unit, slider = false, onInput, onChange, title, decimals, allowEmpty = false }) {
+  function numberField({ label, value, min, max, step = 1, unit, slider = false, onInput, onChange, title, decimals, allowEmpty = false, placeholder }) {
     let current = value; // last committed value: an invalid entry reverts to this, not to the initial value
     const fmtV = (v) => decimals !== undefined ? U.fmt(v, decimals) : String(v);
     const num = h('input', { type: 'number', class: 'num', value: fmtV(value), min, max, step, title });
+    if (placeholder) num.placeholder = placeholder;
     const wrap = h('div', { class: 'field' + (slider ? ' field-slider' : '') });
     const lab = h('label', null, label, unit ? h('span', { class: 'unit' }, unit) : null);
     wrap.appendChild(lab);
@@ -255,6 +260,40 @@
     return wrap;
   }
 
+  /**
+   * A small panel anchored to an element (menus, the paper settings, the plot check). Closes on an outside
+   * click, Escape or the returned close(). opts.align: 'left' | 'right' edge of the anchor.
+   */
+  let openPop = null;
+  function closePopover() { if (openPop) openPop.close(); }
+  function popover(anchor, content, opts = {}) {
+    // clicking the anchor of the open popover again closes it (returns null)
+    if (openPop && openPop.anchor === anchor) { closePopover(); return null; }
+    closePopover();
+    const el = h('div', { class: 'popover', role: 'dialog' }, content);
+    document.body.appendChild(el);
+    const r = anchor.getBoundingClientRect();
+    const w = el.offsetWidth, ht = el.offsetHeight;
+    const left = Math.max(8, Math.min(opts.align === 'right' ? r.right - w : r.left, innerWidth - w - 8));
+    let top = r.bottom + 4;
+    if (top + ht > innerHeight - 8) top = Math.max(8, r.top - ht - 4);
+    el.style.left = left + 'px'; el.style.top = top + 'px';
+    const onDown = (e) => { if (!el.contains(e.target) && !anchor.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    function close() {
+      if (!el.isConnected) return;
+      el.remove();
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+      if (openPop && openPop.el === el) openPop = null;
+      if (opts.onClose) opts.onClose();
+    }
+    openPop = { el, close, anchor };
+    return openPop;
+  }
+
   function section(title, content, opts = {}) {
     const body = h('div', { class: 'sec-body' });
     if (content) (Array.isArray(content) ? content : [content]).forEach(c => c && body.appendChild(c));
@@ -274,7 +313,7 @@
   }
 
   PP.UI = Object.assign(PP.UI || {}, {
-    icon, toast, modal, closeTopModal, hasModal, confirm: confirmDialog,
+    icon, toast, modal, closeTopModal, hasModal, confirm: confirmDialog, popover, closePopover,
     numberField, selectField, checkField, segmented, paramForm, section, btn, iconBtn,
   });
 })(window.PP = window.PP || {});

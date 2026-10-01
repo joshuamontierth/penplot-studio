@@ -159,7 +159,7 @@ test('calibration: frame dry run and offset finder download simulator-clean file
   expect(frameSim.strokes).toBe(0);
 
   await dlg.locator('.seg-btn', { hasText: 'Offset finder' }).click();
-  await expect(dlg.locator('.seg-btn.on')).toHaveText('3 Offset finder');
+  await expect(dlg.locator('.seg-btn.on')).toHaveText('2 Offset finder');
   await expect(dlg.locator('.tips li').first()).toBeVisible();
   const file = await download(page, trigger);
   expect(file.name).toBe('calibration_offset.gcode');
@@ -182,6 +182,6 @@ test('calibration: frame dry run and offset finder download simulator-clean file
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Calibrate', exact: true }).click();
-  await expect(dialog(page, 'Calibration').locator('.seg-btn.on')).toHaveText('3 Offset finder');
+  await expect(dialog(page, 'Calibration').locator('.seg-btn.on')).toHaveText('2 Offset finder');
   expect(consoleProblems).toEqual([]);
 });

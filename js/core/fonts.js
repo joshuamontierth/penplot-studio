@@ -200,6 +200,41 @@
     };
   }
 
+  // ---- fonts installed on this computer (Local Font Access API: Chrome/Edge and the desktop app) ----
+  const systemFonts = new Map(); // font id -> FontData
+  /** Add the installed fonts to the catalog ("On this computer"); resolves with how many there are. */
+  async function listSystemFonts() {
+    if (typeof window.queryLocalFonts !== 'function') throw new Error('This browser cannot list installed fonts - use Upload font, or the desktop app.');
+    const list = await window.queryLocalFonts();
+    let added = 0;
+    for (const fd of list) {
+      const id = 'sys:' + fd.postscriptName;
+      if (byId.has(id)) continue;
+      systemFonts.set(id, fd);
+      reg(id, fd.fullName || fd.postscriptName, 'On this computer', 'outline', { type: 'system' });
+      added++;
+    }
+    if (added) events.emit('catalog');
+    return systemFonts.size;
+  }
+  /** At startup: list installed fonts without asking, if permission was already granted. */
+  async function restoreSystemFonts() {
+    try {
+      if (typeof window.queryLocalFonts !== 'function' || !navigator.permissions) return;
+      const st = await navigator.permissions.query({ name: 'local-fonts' });
+      if (st.state === 'granted') await listSystemFonts();
+    } catch (e) { /* not supported */ }
+  }
+  async function loadSystemFont(f) {
+    const fd = systemFonts.get(f.id);
+    if (!fd) throw new Error('Installed font not available - click "Installed fonts" again.');
+    const ot = await loadOpenType();
+    let font;
+    try { font = ot.parse(await (await fd.blob()).arrayBuffer()); } catch (e) { throw new Error('Cannot read "' + f.name + '" (font collections and some formats are not supported).', { cause: e }); }
+    f.glyphs.clear();
+    setupOTF(f, font);
+  }
+
   // ---- opentype ----
   let otPromise = null;
   function loadOpenType() {
@@ -304,6 +339,7 @@
         if (f.source.type === 'hjson') setupHJSON(f, await loadHersheyJSON());
         else if (f.source.type === 'svgfont') await loadSVGFont(f);
         else if (f.source.type === 'hand') { setupHand(f); await load(FALLBACK_FONT).catch(() => {}); }
+        else if (f.source.type === 'system') await loadSystemFont(f);
         else if (f.source.type === 'otf') throw new Error('Custom font not available - please upload it again.');
         f.loaded = true;
         events.emit('loaded', id);
@@ -431,5 +467,7 @@
     getHandwriting,
     saveHandwriting,
     loadOpenType,
+    listSystemFonts,
+    restoreSystemFonts,
   };
 })(window.PP = window.PP || {});

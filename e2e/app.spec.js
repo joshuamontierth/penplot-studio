@@ -9,7 +9,7 @@ test('boots with the header, tools, panels, canvas and welcome design', async ({
   const header = page.locator('#header');
   await expect(header.locator('.brand-name')).toHaveText('PenPlot Studio');
   await expect(header.locator('.printer-select')).toHaveValue('bambu-x1c');
-  await expect(header.locator('.pill')).toHaveText('Pen offset X-28 Y-35');
+  await expect(header.getByRole('button', { name: 'Letter · portrait' })).toBeVisible();
   await expect(header.getByRole('button', { name: 'Download G-code' })).toBeVisible();
   await expect(header.getByRole('button', { name: 'Undo (Ctrl+Z)' })).toBeDisabled();
 
@@ -20,7 +20,7 @@ test('boots with the header, tools, panels, canvas and welcome design', async ({
   await expect(page.locator('#left-panel .tab')).toHaveText(['Text', 'Draw', 'Image', 'Patterns', 'Import']);
   await expect(page.locator('#left-panel .tab.on')).toHaveText('Text');
   const rightSections = page.locator('#right-panel .sec-head');
-  for (const name of ['Selection', 'Layers / pens', 'Plotter settings', 'Plot summary', 'Paper']) {
+  for (const name of ['Layers', 'Selection']) {
     await expect(rightSections.filter({ hasText: name })).toBeVisible();
   }
 
@@ -33,9 +33,10 @@ test('boots with the header, tools, panels, canvas and welcome design', async ({
   // welcome design: border, two text lines and a spirograph, with nothing to undo
   const types = await page.evaluate(() => PP.Store.project.objects.map((o) => o.type));
   expect(types).toEqual(['shape', 'text', 'text', 'pattern']);
-  const summary = page.locator('#right-panel .stat');
-  await expect(summary.filter({ hasText: 'Pens (layers)' }).locator('b')).toHaveText('1');
-  await expect(summary.filter({ hasText: 'Pen lifts' }).locator('b')).toHaveText(/^\d+$/);
+  // the plot summary lives in the status bar; project settings are not in the right panel
+  await expect(page.locator('#statusbar .st-plan')).toContainText(/1 pen · .* of line · \d+ lifts/);
+  await expect(page.locator('#statusbar .st-check')).toHaveText('Ready to plot');
+  await expect(page.locator('#right-panel .sec-head')).toHaveCount(2);
   // Preview / Download / Calibrate live only in the top bar
   await expect(page.locator('#right-panel').getByRole('button', { name: /Download G-code|Preview/ })).toHaveCount(0);
   await expect(page.locator('#right-panel .layer-row .layer-count')).toHaveText('4');
@@ -56,9 +57,9 @@ test('first launch opens the help dialog once', async ({ page, consoleProblems }
     '0. Before you start',
     '1. Empty run',
     '2. Frame test with the holder',
-    '3. Z test',
-    '4. Offset finder',
-    '5. Frame test with a pen',
+    '3. Offset finder',
+    '4. Frame test with a pen',
+    'Fine-tuning',
   ]) {
     await expect(help.getByRole('heading', { name: new RegExp('^' + t.replace(/[.()]/g, '\\$&')) })).toBeVisible();
   }
@@ -66,7 +67,7 @@ test('first launch opens the help dialog once', async ({ page, consoleProblems }
   await expect(help).toBeHidden();
 
   // the header help button brings it back; Escape closes it
-  await page.getByRole('button', { name: 'How to plot on your X1C / help' }).click();
+  await page.locator('#header').getByRole('button', { name: 'Help', exact: true }).click();
   await expect(help).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(help).toBeHidden();
@@ -80,7 +81,7 @@ test('status bar shows pen and nozzle position; settings show the drawable area'
   // nozzle = pen - offset (offset X-28 Y-35)
   await expect(page.locator('#statusbar .st-pos')).toHaveText('Pen X 100.0  Y 120.0 mm');
   await expect(page.locator('#statusbar .st-noz')).toHaveText('Nozzle X 128.0  Y 155.0');
-  await expect(page.locator('#statusbar .st-hint')).toContainText('Click to select');
+  await expect(page.locator('#statusbar .st-hint')).toHaveText('');
 
   await page.getByRole('button', { name: 'Printer & plotter settings' }).click();
   const settings = page.getByRole('dialog').filter({ hasText: 'Printer & plotter settings' });
@@ -107,7 +108,6 @@ test('keyboard shortcuts pick tools; zoom keys and buttons change the zoom', asy
   }
   await page.keyboard.press('Escape'); // Escape returns to the select tool
   await expect(active).toHaveAttribute('data-tool', 'select');
-  await expect(page.locator('#statusbar .st-hint')).toContainText('Click to select');
 
   const zoom = page.locator('#canvas-wrap .zoom-lbl');
   await expect(zoom).toHaveText('100%');

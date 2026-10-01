@@ -512,6 +512,23 @@ Record every answer. They settle the assumptions in §3.
     - An element budget now stops pathological files.
 13. Fixed a Windows risk in the dev server: the "is main module" check could fail when drive-letter casing differs.
 
+**Session 3 (2026-09-30 to 10-01): hardware feedback, UI revamp, desktop app**
+
+14. First dry run on the X1C confirmed A5: pauses go to the purge chute and warm the nozzle to about 90 °C. The end
+    pause is now off by default.
+    - `experiments/pause-temperature-test.gcode` tests whether the 30–60 s wait after Resume is a timeout on the
+      unreachable 0 °C target.
+15. UI revamp, following the approved Claude design ("PenPlot Studio UI revamp" artifact):
+    - Light and dark themes follow the OS; the UI uses the system font and an ink-blue accent.
+    - The right panel holds only Layers and Selection.
+    - Paper is a top-bar popover, and the plot summary moved to the status bar.
+    - Layers reorder by dragging the grip. Each layer's "⋯" menu holds rename, lock and order, plus the per-pen Z
+      and speed under "This pen only". The pen-color picker no longer closes after the first change.
+    - Z tuning is demoted: no quick Z fields, and the Z test is under "Fine-tuning" in Help.
+    - The Image tab is a file chooser plus a trace-style grid.
+    - "Installed fonts" adds system fonts through the Local Font Access API (Chrome/Edge and the desktop app).
+16. Electron desktop app in `desktop/`: `npm run desktop:dist` and `.github/workflows/desktop.yml`.
+
 ---
 
 ## 12. Where the user is

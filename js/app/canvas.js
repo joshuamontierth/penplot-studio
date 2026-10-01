@@ -21,7 +21,7 @@
   }
 
   const C = {
-    bg: '#12151a',
+    bg: '#e7e8eb',
     bed: '#d9dee5',
     bedEdge: '#9aa3ad',
     gridMinor: 'rgba(40,52,70,0.07)',
@@ -30,18 +30,31 @@
     blockedStripe: 'rgba(225, 45, 45, 0.16)',
     paper: '#ffffff',
     paperEdge: 'rgba(0,0,0,0.18)',
-    reach: 'rgba(16, 185, 129, 0.9)',
-    sel: '#10b981',
-    selFill: 'rgba(16,185,129,0.08)',
+    reach: '#2f5bd2',
+    sel: '#2f5bd2',
+    selFill: 'rgba(47,91,210,0.05)',
     out: '#e11d48',
     label: '#8b95a3',
     travel: 'rgba(245, 158, 11, 0.55)',
   };
 
+  /** Canvas colors that follow the UI theme (CSS custom properties; light/dark follow the OS). */
+  function themeColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name, def) => cs.getPropertyValue(name).trim() || def;
+    C.bg = v('--canvas', C.bg);
+    C.sel = v('--accent', C.sel);
+    C.reach = v('--accent', C.reach);
+    C.selFill = v('--sel-fill', C.selFill);
+    C.label = v('--muted', C.label);
+  }
+
   class View {
     constructor(host) {
       this.host = host;
       this.canvas = U.h('canvas', { class: 'bed-canvas', tabindex: '0' });
+      themeColors();
+      if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { themeColors(); this.invalidate(); });
       host.appendChild(this.canvas);
       this.ctx = this.canvas.getContext('2d');
       this.events = new U.Emitter();
@@ -447,7 +460,7 @@
       const R = this.reach;
       const rs = this.toScreen(R.minX, R.maxY);
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(16,160,110,0.95)';
+      ctx.fillStyle = C.reach;
       ctx.font = '600 10px system-ui, sans-serif';
       if (z > 1) ctx.fillText('Drawable area ' + U.fmt(R.maxX - R.minX, 0) + ' × ' + U.fmt(R.maxY - R.minY, 0) + ' mm', rs[0] + 5, rs[1] + 5);
     }
@@ -459,7 +472,7 @@
       const sel = S.selected();
       // outline each selected object lightly when multiple
       if (f.type === 'multi') {
-        ctx.strokeStyle = 'rgba(16,185,129,0.55)';
+        ctx.strokeStyle = C.sel;
         ctx.setLineDash([3, 3]);
         ctx.lineWidth = 1;
         for (const o of sel) {
@@ -675,8 +688,8 @@
       const op = this.op;
       if (op && op.mode === 'marquee') {
         const a = view.toScreen(op.start.x, op.start.y), b = view.toScreen(op.cur.x, op.cur.y);
-        ctx.fillStyle = 'rgba(16,185,129,0.08)';
-        ctx.strokeStyle = 'rgba(16,185,129,0.9)';
+        ctx.fillStyle = C.selFill;
+        ctx.strokeStyle = C.sel;
         ctx.setLineDash([4, 3]);
         ctx.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]));
         ctx.strokeRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]));

@@ -121,7 +121,7 @@ test('select an object, drag it, nudge it with arrow keys and delete it', async 
   expect(o.scaleX).toBe(target.scaleX); // moved, not squashed by an edge handle
   expect(o.scaleY).toBe(target.scaleY);
   // the Selection panel follows the drag
-  const props = page.locator('#right-panel .sec').first();
+  const props = page.locator('#right-panel .sec', { has: page.locator('.sec-head', { hasText: 'Selection' }) });
   const xField = props.locator('.field', { has: page.locator('label', { hasText: /^X/ }) });
   await expect.poll(async () => parseFloat(await xField.locator('input').inputValue())).toBeCloseTo(o.x, 1);
 
@@ -137,7 +137,7 @@ test('select an object, drag it, nudge it with arrow keys and delete it', async 
   expect(await objectCount(page)).toBe(3);
   expect(await selection(page)).toEqual([]);
   await expect(page.locator('#statusbar .st-sel')).toHaveText('');
-  await expect(page.locator('#right-panel .empty-sel')).toContainText('Nothing selected.');
+  await expect(page.locator('#right-panel .empty-sel')).toContainText('Select an object to edit it.');
   expect(consoleProblems).toEqual([]);
 });
 
@@ -237,7 +237,7 @@ test('text tool places text that the Text panel edits live', async ({ page, cons
   await expect(page.locator('#left-panel .tab.on')).toHaveText('Text');
   const ta = pane.locator('textarea.text-input');
   await expect(ta).toBeFocused();
-  await expect(pane).toContainText('Editing the selected text object');
+  await expect(pane).toContainText('Editing the selected text');
   await page.keyboard.type('Pen plot');
 
   const store = (key) => page.evaluate((k) => PP.Store.get(PP.Store.selection[0])[k], key);
@@ -261,7 +261,7 @@ test('text tool places text that the Text panel edits live', async ({ page, cons
 
 test('Text panel adds new text with the chosen text and font', async ({ page, consoleProblems }) => {
   const pane = page.locator('#left-panel .tab-pane.on');
-  const addBtn = pane.getByRole('button', { name: 'Add text to bed' });
+  const addBtn = pane.getByRole('button', { name: 'Add to bed' });
   await pane.locator('textarea.text-input').fill('Panel text');
   await pane.locator('select').selectOption('h:futural');
   await addBtn.click();
@@ -365,8 +365,8 @@ test('layer rename by real double-click, locked objects stay selectable, overrid
   expect((await objects(page)).find((o) => o.id === target.id).x).toBe(target.x);
 
   // a layer Z override can be cleared by emptying the field
-  await page.getByRole('button', { name: 'Layer pen settings' }).first().click();
-  const z = page.locator('#right-panel .layer-settings .field', { hasText: 'Z-Draw override' }).locator('input');
+  await page.locator('#right-panel .layer-row').first().getByRole('button', { name: 'Layer options' }).click();
+  const z = page.locator('.popover .field', { hasText: 'Pen height' }).locator('input');
   await z.fill('15');
   await z.press('Enter');
   expect(await page.evaluate(() => PP.Store.project.layers[0].zDraw)).toBe(15);
@@ -383,7 +383,7 @@ test('UX guards: hidden layer, shortcuts while typing, empty text, stale preview
   // adding from a panel to a hidden active layer is refused with a warning
   await page.evaluate(() => PP.Store.updateLayer(PP.Store.project.activeLayerId, { visible: false }));
   const before = await objectCount(page);
-  await page.getByRole('button', { name: 'Add text to bed' }).click();
+  await page.getByRole('button', { name: 'Add to bed' }).click();
   await expect(page.locator('.toast', { hasText: 'is hidden' })).toBeVisible();
   expect(await objectCount(page)).toBe(before);
   await page.evaluate(() => PP.Store.updateLayer(PP.Store.project.activeLayerId, { visible: true }));
@@ -409,5 +409,52 @@ test('UX guards: hidden layer, shortcuts while typing, empty text, stale preview
   await expect.poll(() => page.evaluate(() => PP.Preview.active)).toBe(true);
   await page.evaluate(() => PP.Store.update(PP.Store.project.objects[0].id, { x: 100 }));
   await expect.poll(() => page.evaluate(() => PP.Preview.active)).toBe(false);
+  expect(consoleProblems).toEqual([]);
+});
+
+test('layers reorder by drag, the color picker survives changes, paper and align popovers', async ({
+  page,
+  consoleProblems,
+}) => {
+  await page.evaluate(() => PP.Store.addLayer());
+  const rows = page.locator('#right-panel .layer-row');
+  await expect(rows).toHaveCount(2);
+  const names = () => page.evaluate(() => PP.Store.project.layers.map((l) => l.name));
+  const [first, second] = await names();
+
+  // drag the second layer's grip above the first: it plots first now
+  await rows
+    .nth(1)
+    .locator('.layer-grip')
+    .dragTo(rows.nth(0), { targetPosition: { x: 40, y: 4 } });
+  await expect.poll(names).toEqual([second, first]);
+
+  // a color change must not re-render the row under the open picker (the picker used to close)
+  const swatch = rows.first().locator('input[type=color]');
+  const handle = await swatch.elementHandle();
+  await swatch.evaluate((el) => {
+    el.value = '#ff0000';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(150); // longer than the list's 50 ms re-render debounce
+  expect(await handle.evaluate((el) => el.isConnected)).toBe(true);
+  await swatch.evaluate((el) => el.dispatchEvent(new Event('change', { bubbles: true })));
+  await expect.poll(() => page.evaluate(() => PP.Store.project.layers[0].color)).toBe('#ff0000');
+
+  // paper popover from the top bar
+  await page.getByRole('button', { name: 'Letter · portrait' }).click();
+  await page.locator('.popover .seg-btn', { hasText: 'Landscape' }).click();
+  await expect(page.getByRole('button', { name: 'Letter · landscape' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.popover')).toHaveCount(0);
+
+  // Align menu centers the selection on the paper
+  const target = (await objects(page)).find((o) => o.text === 'Made with a pen plotter');
+  await page.evaluate((id) => PP.Store.select(id), target.id);
+  await page.getByRole('button', { name: 'Align' }).click();
+  await page.locator('.popover .menu-item', { hasText: 'Center on the paper' }).click();
+  const pa = await page.evaluate(() => PP.Store.project.paper);
+  const moved = (await objects(page)).find((o) => o.id === target.id);
+  near((moved.bbox.minX + moved.bbox.maxX) / 2, pa.x + pa.w / 2, 0.6);
   expect(consoleProblems).toEqual([]);
 });

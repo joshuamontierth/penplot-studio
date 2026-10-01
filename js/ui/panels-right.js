@@ -69,9 +69,7 @@
       fields = null;
       const sel = S.selected();
       if (!sel.length) {
-        body.appendChild(h('div', { class: 'empty-sel' },
-          h('p', null, 'Nothing selected.'),
-          h('p', { class: 'hint' }, 'Click an object to edit it, or drag to box-select.')));
+        body.appendChild(h('div', { class: 'empty-sel' }, 'Select an object to edit it.'));
         sec.classList.add('dim');
         return;
       }
@@ -102,7 +100,8 @@
       const fr = UI.numberField({ label: 'Rotation', unit: '°', value: U.round(gi.rot, 2), min: -360, max: 360, step: 1, decimals: 1, onChange: (v) => applyGeom('rot', v) });
       const grid = h('div', { class: 'grid2' }, fx, fy, fw, fh);
       body.appendChild(grid);
-      body.appendChild(h('div', { class: 'row gap aspect-row' }, lockBtn, h('span', { class: 'hint' }, 'Center position in pen coordinates (mm from the front-left corner)')));
+      lockBtn.title = 'Keep proportions when changing W or H';
+      body.appendChild(h('div', { class: 'row gap aspect-row' }, lockBtn, h('span', { class: 'muted' }, 'Keep proportions')));
       if (single) body.appendChild(fr);
       fields = { fx, fy, fw, fh, fr };
 
@@ -115,11 +114,17 @@
         UI.iconBtn('copy', 'Duplicate (Ctrl+D)', () => ops.duplicate()),
         UI.iconBtn('trash', 'Delete (Del)', () => ops.remove(), { cls: 'danger' })));
 
-      body.appendChild(h('div', { class: 'field' }, h('label', null, 'Position'),
-        h('div', { class: 'btn-row wrap' },
-          UI.btn('Center on paper', () => ops.align('center', 'paper'), { small: true, icon: 'center' }),
-          UI.btn('Center in drawable', () => ops.align('center', 'drawable'), { small: true }),
-          UI.btn('Fit to paper', () => ops.fit(10), { small: true, icon: 'fit', title: 'Scale to fit the paper/drawable area with a 10 mm margin' }))));
+      // placement actions in one menu instead of a row of buttons
+      const alignB = UI.btn('Align', () => {
+        let pop = null;
+        const item = (label, fn) => h('button', { class: 'menu-item', onclick: () => { if (pop) pop.close(); fn(); } }, label);
+        pop = UI.popover(alignB, h('div', { class: 'menu' },
+          item('Center on the paper', () => ops.align('center', 'paper')),
+          item('Center in the drawable area', () => ops.align('center', 'drawable')),
+          item('Fit to the paper (10 mm margin)', () => ops.fit(10))));
+      }, { small: true, cls: 'btn-menu', title: 'Center or fit the selection' });
+      alignB.appendChild(UI.icon('chevron', 12));
+      body.lastChild.appendChild(alignB);
 
       // layer
       body.appendChild(UI.selectField({
@@ -169,7 +174,6 @@
         const fillSec = UI.section('Hatch fill', [
           UI.checkField({ label: 'Fill closed shapes with hatch lines', value: enabled, onChange: (v) => { setFill({ enabled: v }); } }),
           sub,
-          h('div', { class: 'hint' }, 'Only closed outlines are filled (rectangles, circles, SVG shapes, outline-font letters).'),
         ], { collapsible: true, collapsed: !enabled });
         fillSec.classList.add('inner-sec');
         body.appendChild(fillSec);
@@ -212,45 +216,117 @@
   // Layers
   // ---------------------------------------------------------------------------
   function buildLayers(host) {
-    const addB = UI.iconBtn('plus', 'Add layer (another pen color)', () => S.addLayer(), { size: 16 });
-    const sec = UI.section('Layers / pens', null, { extra: addB });
+    const addB = UI.iconBtn('plus', 'Add a layer (another pen)', () => S.addLayer(), { size: 15 });
+    const sec = UI.section('Layers', null, { extra: addB });
+    sec.classList.add('layers-sec');
     host.appendChild(sec);
     const list = h('div', { class: 'layer-list' });
     sec.body.appendChild(list);
-    sec.body.appendChild(h('div', { class: 'hint' }, 'One layer per pen, plotted top to bottom.'));
-    const expanded = new Set();
 
     let lastNameClick = { id: null, t: 0 };
-    let renaming = null; // layer id being renamed: delayed re-renders wait so the input is not destroyed
+    // while a layer is being renamed, recolored or dragged, delayed re-renders wait: they would destroy the
+    // input (the color picker closed after the first change) or the dragged row
+    let busy = null;
+    let dragId = null;
+
     function startRename(id) {
       const L = S.project.layers.find(l => l.id === id);
       const name = L && list.querySelector('.layer-row[data-layer="' + CSS.escape(id) + '"] .layer-name');
       if (!name) return;
-      const inp = h('input', { class: 'layer-rename', value: L.name });
+      const inp = h('input', { class: 'layer-rename', value: L.name, 'aria-label': 'Layer name' });
       name.replaceWith(inp);
-      renaming = id;
+      busy = id;
       inp.focus(); inp.select();
-      const done = () => { renaming = null; const v = inp.value.trim(); if (v && v !== L.name) S.updateLayer(L.id, { name: v }); else render(); };
+      const done = () => { busy = null; const v = inp.value.trim(); if (v && v !== L.name) S.updateLayer(L.id, { name: v }); else render(); };
       inp.addEventListener('blur', done);
       inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = L.name; inp.blur(); } });
     }
+
+    async function deleteLayer(L) {
+      if (S.project.layers.length <= 1) { UI.toast('A project needs at least one layer.', 'warn'); return; }
+      const n = S.project.objects.filter(o => o.layerId === L.id).length;
+      if (n && !(await UI.confirm('Delete layer', 'Delete "' + L.name + '" and its ' + n + ' object(s)?', 'Delete', true))) return;
+      S.removeLayer(L.id);
+    }
+
+    /** The "..." menu: rename, lock, order, and the per-pen overrides (kept out of the way on purpose). */
+    function layerMenu(anchor, L) {
+      const p = PP.App.profile();
+      const i = S.project.layers.indexOf(L), last = S.project.layers.length - 1;
+      let pop = null;
+      const item = (label, fn, opts = {}) => h('button', { class: 'menu-item' + (opts.danger ? ' danger' : ''), disabled: opts.disabled, onclick: () => { if (pop) pop.close(); fn(); } }, label);
+      const minZ = U.round(PP.GCode.minSafeDrawZ(p), 2), maxZ = U.round(p.zLift - 0.5, 2);
+      const content = h('div', { class: 'menu' },
+        item('Rename', () => startRename(L.id)),
+        item(L.locked ? 'Unlock layer' : 'Lock layer', () => S.updateLayer(L.id, { locked: !L.locked })),
+        item('Move up (plot earlier)', () => S.moveLayer(L.id, -1), { disabled: i <= 0 }),
+        item('Move down (plot later)', () => S.moveLayer(L.id, 1), { disabled: i >= last }),
+        h('div', { class: 'menu-sep' }),
+        h('div', { class: 'menu-label' }, 'This pen only'),
+        h('div', { class: 'menu-fields' },
+          UI.numberField({ label: 'Pen height (Z)', unit: 'mm', value: U.isNum(L.zDraw) ? L.zDraw : '', placeholder: String(p.zDraw), min: minZ, max: maxZ, step: 0.1, allowEmpty: true, title: 'Empty = the printer value (' + p.zDraw + ' mm). Allowed ' + minZ + '..' + maxZ + ' mm.', onChange: (v) => S.updateLayer(L.id, { zDraw: v === null ? null : PP.GCode.safeDrawZ(p, v) }) }),
+          UI.numberField({ label: 'Draw speed', unit: 'mm/s', value: U.isNum(L.speed) ? L.speed : '', placeholder: String(p.drawSpeed), min: 1, max: 500, step: 1, allowEmpty: true, title: 'Empty = the printer value (' + p.drawSpeed + ' mm/s)', onChange: (v) => S.updateLayer(L.id, { speed: v }) }),
+          UI.numberField({ label: 'Line width on screen', unit: 'mm', value: L.penWidth || 0.5, min: 0.05, max: 5, step: 0.05, decimals: 2, onChange: (v) => S.updateLayer(L.id, { penWidth: v }) })),
+        h('div', { class: 'menu-sep' }),
+        item('Delete layer', () => deleteLayer(L), { danger: true }));
+      pop = UI.popover(anchor, content, { align: 'right' });
+    }
+
+    function clearMarks() { list.querySelectorAll('.drop-before, .drop-after').forEach(r => r.classList.remove('drop-before', 'drop-after')); }
 
     function render() {
       U.clear(list);
       const counts = new Map();
       for (const o of S.project.objects) counts.set(o.layerId, (counts.get(o.layerId) || 0) + 1);
-      S.project.layers.forEach((L, i) => {
+      const layers = S.project.layers;
+      layers.forEach((L, i) => {
         const active = L.id === S.project.activeLayerId;
-        const color = h('input', { type: 'color', class: 'swatch', value: L.color, title: 'Pen color' });
-        color.addEventListener('input', () => S.updateLayer(L.id, { color: color.value }, { history: false }));
-        color.addEventListener('change', () => { S.checkpoint(); S.updateLayer(L.id, { color: color.value }, { history: false }); });
+        const grip = h('span', { class: 'layer-grip', title: 'Drag to change the plot order' }, UI.icon('grip', 14));
+        const color = h('input', { type: 'color', class: 'swatch', value: L.color, title: 'Pen color', 'aria-label': 'Pen color for ' + L.name });
+        let recoloring = false;
+        color.addEventListener('input', () => {
+          busy = L.id;
+          if (!recoloring) { recoloring = true; S.checkpoint(); } // one undo step for the whole pick
+          S.updateLayer(L.id, { color: color.value }, { history: false });
+        });
+        color.addEventListener('change', () => { recoloring = false; busy = null; renderSoon(); });
+        color.addEventListener('blur', () => { if (busy === L.id && !dragId) { recoloring = false; busy = null; renderSoon(); } });
         const name = h('span', { class: 'layer-name', title: 'Double-click to rename' }, L.name);
         name.addEventListener('dblclick', () => startRename(L.id));
+        const lockB = L.locked ? UI.iconBtn('lock', 'Locked - click to unlock', (e) => { e.stopPropagation(); S.updateLayer(L.id, { locked: false }); }, { size: 14, cls: 'on' }) : null;
         const eye = UI.iconBtn(L.visible ? 'eye' : 'eyeoff', L.visible ? 'Hide (hidden layers are not plotted)' : 'Show', (e) => { e.stopPropagation(); S.updateLayer(L.id, { visible: !L.visible }); }, { size: 15, cls: L.visible ? '' : 'off' });
-        const lock = UI.iconBtn(L.locked ? 'lock' : 'unlock', L.locked ? 'Unlock' : 'Lock (prevent edits)', (e) => { e.stopPropagation(); S.updateLayer(L.id, { locked: !L.locked }); }, { size: 15, cls: L.locked ? 'on' : 'off' });
-        const more = UI.iconBtn('settings', 'Layer pen settings', (e) => { e.stopPropagation(); if (expanded.has(L.id)) expanded.delete(L.id); else expanded.add(L.id); render(); }, { size: 15 });
-        const row = h('div', { class: 'layer-row' + (active ? ' active' : ''), dataset: { layer: L.id } },
-          h('span', { class: 'layer-idx' }, String(i + 1)), color, name, h('span', { class: 'layer-count' }, String(counts.get(L.id) || 0)), eye, lock, more);
+        const more = UI.iconBtn('more', 'Layer options', (e) => { e.stopPropagation(); layerMenu(more, L); }, { size: 15 });
+        const row = h('div', { class: 'layer-row' + (active ? ' active' : '') + (L.visible ? '' : ' is-hidden'), dataset: { layer: L.id } },
+          grip, color, name, lockB, h('span', { class: 'layer-count', title: 'Objects on this layer' }, String(counts.get(L.id) || 0)), eye, more);
+
+        // drag the grip to reorder (layer order = plot order)
+        grip.addEventListener('pointerdown', () => { row.draggable = true; });
+        row.addEventListener('dragstart', (e) => {
+          dragId = L.id; busy = L.id;
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('application/x-penplot-layer', L.id);
+          row.classList.add('dragging');
+        });
+        row.addEventListener('dragend', () => { row.draggable = false; dragId = null; busy = null; clearMarks(); render(); });
+        row.addEventListener('dragover', (e) => {
+          if (!dragId) return;
+          e.preventDefault(); e.stopPropagation();
+          const r = row.getBoundingClientRect();
+          clearMarks();
+          row.classList.add(e.clientY > r.top + r.height / 2 ? 'drop-after' : 'drop-before');
+        });
+        row.addEventListener('drop', (e) => {
+          if (!dragId) return;
+          e.preventDefault(); e.stopPropagation();
+          const r = row.getBoundingClientRect();
+          const from = layers.findIndex(x => x.id === dragId);
+          let to = e.clientY > r.top + r.height / 2 ? i + 1 : i;
+          if (from < to) to--;
+          const id = dragId;
+          dragId = null; busy = null;
+          S.moveLayerTo(id, to);
+        });
+
         row.addEventListener('click', (e) => {
           if (e.target === color || e.target.closest('button') || e.target.tagName === 'INPUT') return;
           // The first click re-renders the list, so the browser's dblclick never reaches the new name span:
@@ -260,31 +336,13 @@
             if (lastNameClick.id === L.id && now - lastNameClick.t < 450) { lastNameClick.id = null; startRename(L.id); return; }
             lastNameClick = { id: L.id, t: now };
           }
-          S.setActiveLayer(L.id); render();
+          if (!active) { S.setActiveLayer(L.id); render(); }
         });
         list.appendChild(row);
-        if (expanded.has(L.id)) {
-          const p = PP.App.profile();
-          const box = h('div', { class: 'layer-settings' },
-            UI.numberField({ label: 'Z-Draw override', unit: 'mm', value: U.isNum(L.zDraw) ? L.zDraw : '', min: U.round(PP.GCode.minSafeDrawZ(p), 2), max: U.round(p.zLift - 0.5, 2), step: 0.1, allowEmpty: true, title: 'Leave empty to use the printer Z-Draw (' + p.zDraw + ' mm). Allowed ' + U.round(PP.GCode.minSafeDrawZ(p), 2) + '..' + U.round(p.zLift - 0.5, 2) + ' mm.', onChange: (v) => S.updateLayer(L.id, { zDraw: v === null ? null : PP.GCode.safeDrawZ(p, v) }) }),
-            UI.numberField({ label: 'Draw speed override', unit: 'mm/s', value: U.isNum(L.speed) ? L.speed : '', min: 1, max: 500, step: 1, allowEmpty: true, title: 'Leave empty to use the printer draw speed (' + p.drawSpeed + ' mm/s)', onChange: (v) => S.updateLayer(L.id, { speed: v }) }),
-            UI.numberField({ label: 'Pen width (display)', unit: 'mm', value: L.penWidth || 0.5, min: 0.05, max: 5, step: 0.05, decimals: 2, onChange: (v) => S.updateLayer(L.id, { penWidth: v }) }),
-            h('div', { class: 'btn-row' },
-              UI.btn('Clear overrides', () => S.updateLayer(L.id, { zDraw: null, speed: null }), { small: true }),
-              UI.iconBtn('up', 'Move layer up (plot earlier)', () => S.moveLayer(L.id, -1), { size: 15 }),
-              UI.iconBtn('down', 'Move layer down (plot later)', () => S.moveLayer(L.id, 1), { size: 15 }),
-              UI.iconBtn('trash', 'Delete layer and its objects', async () => {
-                if (S.project.layers.length <= 1) { UI.toast('A project needs at least one layer.', 'warn'); return; }
-                const n = counts.get(L.id) || 0;
-                if (n && !(await UI.confirm('Delete layer', 'Delete "' + L.name + '" and its ' + n + ' object(s)?', 'Delete', true))) return;
-                S.removeLayer(L.id);
-              }, { size: 15, cls: 'danger' })));
-          list.appendChild(box);
-        }
       });
     }
     S.events.on('change', (k) => { if (k !== 'transform') renderSoon(); });
-    const renderSoon = U.debounce(() => { if (!renaming) render(); }, 50);
+    const renderSoon = U.debounce(() => { if (!busy) render(); }, 50);
     PP.App.events.on('profile', renderSoon);
     render();
   }
@@ -292,9 +350,9 @@
   // ---------------------------------------------------------------------------
   // Paper
   // ---------------------------------------------------------------------------
-  function buildPaper(host) {
-    const sec = UI.section('Paper', null, { collapsible: true });
-    host.appendChild(sec);
+  /** The paper settings, shown as a popover from the top bar's paper button. Returns { el, dispose }. */
+  function paperForm() {
+    const el = h('div', { class: 'paper-form' });
     const pa = () => S.project.paper;
     const preset = UI.selectField({
       label: 'Size', value: pa().preset,
@@ -321,86 +379,37 @@
     const fy = UI.numberField({ label: 'Front edge Y', unit: 'mm', value: pa().y, min: -300, max: 300, step: 1, decimals: 1, onChange: (v) => S.setPaper({ y: v }) });
     const show = UI.checkField({ label: 'Show paper on the bed', value: pa().visible, onChange: (v) => S.setPaper({ visible: v }) });
     const R = () => PP.GCode.reachableRect(PP.App.profile());
-    sec.body.append(preset, h('div', { class: 'field' }, h('label', null, 'Orientation'), orient), h('div', { class: 'grid2' }, fw, fh, fx, fy), show,
+    el.append(preset, h('div', { class: 'field' }, h('label', null, 'Orientation'), orient), h('div', { class: 'grid2' }, fw, fh, fx, fy), show,
       h('div', { class: 'btn-row wrap' },
         UI.btn('Front-left corner', () => S.setPaper({ x: 0, y: 0 }), { small: true, title: 'Paper aligned with the front-left corner of the plate' }),
         UI.btn('Drawable corner', () => S.setPaper({ x: Math.floor(R().minX), y: Math.floor(R().minY) }), { small: true, title: 'Align paper with the front-left corner of the drawable area' }),
         UI.btn('Designer margins', () => { const pr = PP.App.profile(); S.setPaper({ x: U.round(pr.bedWidth - 29 - pa().w, 1), y: U.round(pr.bedDepth - 41 - pa().h, 1) }); }, { small: true, title: 'Mount designer\'s placement for X1/P1: paper 29 mm from the right edge and 41 mm from the back edge' }),
         UI.btn('Center', () => { const r = R(); S.setPaper({ x: U.round((r.minX + r.maxX) / 2 - pa().w / 2, 1), y: U.round((r.minY + r.maxY) / 2 - pa().h / 2, 1) }); }, { small: true })),
-      h('div', { class: 'hint' }, 'Tape the paper where it is shown on the bed.'));
-    S.events.on('change', (k) => {
+    );
+    const off = S.events.on('change', (k) => {
       if (k !== 'paper' && k !== 'undo' && k !== 'redo' && k !== 'load') return;
       const p = pa();
       preset.setValue(p.preset); orient.setValue(p.landscape ? 'l' : 'p');
       fw.setValue(p.w); fh.setValue(p.h); fx.setValue(p.x); fy.setValue(p.y); show.setValue(p.visible);
     });
+    return { el, dispose: off };
   }
 
-  // ---------------------------------------------------------------------------
-  // Plotter quick settings
-  // ---------------------------------------------------------------------------
-  function buildPlotter(host) {
-    const sec = UI.section('Plotter settings', null, { extra: UI.iconBtn('settings', 'All printer settings', () => UI.openPrinterSettings(), { size: 15 }) });
-    host.appendChild(sec);
-    const p = PP.App.profile();
-    const upd = (k) => (v) => PP.App.updateProfile({ [k]: v });
-    const zd = UI.numberField({ label: 'Z-Draw', unit: 'mm', value: p.zDraw, min: 0.2, max: 200, step: 0.1, decimals: 2, title: 'Nozzle height at which the pen touches the paper. Lower = more pressure.', onChange: upd('zDraw') });
-    const zl = UI.numberField({ label: 'Z-Lift', unit: 'mm', value: p.zLift, min: 0.5, max: 220, step: 0.5, decimals: 2, title: 'Nozzle height for travel moves (pen up).', onChange: upd('zLift') });
-    const ds = UI.numberField({ label: 'Draw speed', unit: 'mm/s', value: p.drawSpeed, min: 1, max: 500, step: 1, decimals: 0, onChange: upd('drawSpeed') });
-    const ms = UI.numberField({ label: 'Move speed', unit: 'mm/s', value: p.travelSpeed, min: 5, max: 500, step: 5, decimals: 0, onChange: upd('travelSpeed') });
-    sec.body.append(h('div', { class: 'grid2' }, zd, zl, ds, ms),
-      h('div', { class: 'hint' }, 'Find your Z-Draw with the ',
-        h('a', { href: '#', onclick: (e) => { e.preventDefault(); UI.openCalibration('compact'); } }, 'Z test'), ' (',
-        h('a', { href: '#', onclick: (e) => { e.preventDefault(); UI.openHelp('calibration'); } }, 'guide'), ').'));
-    PP.App.events.on('profile', () => {
-      const q = PP.App.profile();
-      zd.setValue(q.zDraw); zl.setValue(q.zLift); ds.setValue(q.drawSpeed); ms.setValue(q.travelSpeed);
-    });
-  }
+  UI.openPaper = function (anchor) {
+    const f = paperForm();
+    if (!UI.popover(anchor, h('div', { class: 'popover-pad' }, f.el), { onClose: f.dispose })) f.dispose();
+  };
 
-  // ---------------------------------------------------------------------------
-  // Summary
-  // ---------------------------------------------------------------------------
-  function buildSummary(host) {
-    // Preview, Download and Calibrate live in the top bar; this section only reports
-    const sec = UI.section('Plot summary', null);
-    host.appendChild(sec);
-    const statsEl = h('div', { class: 'stats' });
-    const warnEl = h('div', { class: 'warns' });
-    sec.body.append(statsEl, warnEl);
-
-    const stat = (label, value) => h('div', { class: 'stat' }, h('span', null, label), h('b', null, value));
-    const compute = U.debounce(() => {
-      let plan;
-      try { plan = PP.App.buildPlan(); } catch (e) { console.error(e); return; }
-      const s = plan.stats;
-      U.clear(statsEl);
-      U.clear(warnEl);
-      statsEl.append(
-        stat('Est. time', U.formatDuration(s.time + (plan.jobs.length ? 45 : 0))),
-        stat('Pens (layers)', String(plan.jobs.length)),
-        stat('Draw length', U.formatLength(s.drawLen)),
-        stat('Pen lifts', String(s.lifts)));
-      const warns = [];
-      if (!plan.jobs.length) warns.push(['info', PP.App.emptyPlanMessage(plan)]);
-      else if (plan.clipped) warns.push(['warn', 'Some lines are outside the drawable area (shown in red) and will be clipped.']);
-      const hiddenWithObjs = S.project.layers.filter(l => !l.visible && S.project.objects.some(o => o.layerId === l.id));
-      if (hiddenWithObjs.length) warns.push(['info', hiddenWithObjs.length + ' hidden layer(s) will not be plotted.']);
-      const errs = PP.GCode.validateProfile(plan.profile);
-      errs.forEach(e => warns.push(['error', e]));
-      warns.forEach(([t, m]) => warnEl.appendChild(h('div', { class: 'warn-item ' + t }, UI.icon(t === 'info' ? 'help' : 'warn', 14), h('span', null, m))));
-    }, 350);
-    S.events.on('change', compute);
-    PP.App.events.on('profile', compute);
-    PP.App.events.on('prefs', compute);
-    compute();
-  }
+  /** Short label for the top bar: "Letter · portrait", "A4 · landscape", "200 × 150 mm". */
+  UI.paperLabel = function () {
+    const pa = S.project.paper;
+    const pr = S.PAPER_PRESETS.find(x => x.id === pa.preset);
+    if (!pr || pa.preset === 'custom') return U.fmt(pa.w, 0) + ' × ' + U.fmt(pa.h, 0) + ' mm';
+    return pr.name.split(' (')[0] + ' · ' + (pa.landscape ? 'landscape' : 'portrait');
+  };
 
   UI.buildRightPanel = function (host) {
-    buildProps(host);
     buildLayers(host);
-    buildPlotter(host);
-    buildSummary(host);
-    buildPaper(host);
+    buildProps(host);
   };
 })(window.PP = window.PP || {});

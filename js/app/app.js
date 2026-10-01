@@ -449,12 +449,10 @@
     profSel.addEventListener('change', () => App.setProfile(profSel.value));
     events.on('profile', fillProfiles);
 
-    const offsetPill = h('span', { class: 'pill', title: 'Pen offset relative to the nozzle (edit in Printer settings)' });
-    const updPill = () => {
-      const p = App.profile();
-      offsetPill.textContent = 'Pen offset X' + (p.penOffsetX >= 0 ? '+' : '') + U.fmt(p.penOffsetX, 1) + ' Y' + (p.penOffsetY >= 0 ? '+' : '') + U.fmt(p.penOffsetY, 1);
-    };
-    updPill(); events.on('profile', updPill);
+    // the paper lives in a popover from the top bar (it is a project setting, not a property of a selection)
+    const paperLbl = h('span', null, UI.paperLabel());
+    const paperB = h('button', { class: 'btn btn-menu', title: 'Paper size and position', onclick: () => UI.openPaper(paperB) }, UI.icon('paper', 15), paperLbl, UI.icon('chevron', 12));
+    S.events.on('change', (k) => { if (k === 'paper' || k === 'load' || k === 'undo' || k === 'redo') paperLbl.textContent = UI.paperLabel(); });
 
     const nameInput = h('input', { class: 'project-name', value: S.project.name, title: 'Project name', spellcheck: 'false' });
     nameInput.addEventListener('change', () => { S.project.name = nameInput.value.trim() || 'Untitled plot'; S.changed('name'); });
@@ -468,8 +466,8 @@
 
     header.append(
       h('div', { class: 'brand' },
-        h('span', { class: 'logo', html: '<svg viewBox="0 0 32 32" width="26" height="26"><rect x="2" y="2" width="28" height="28" rx="7" fill="#10b981"/><path d="M9 23c3-9 6-12 8-8s4 1 6-6" stroke="#06281d" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="23" cy="9" r="2.4" fill="#06281d"/></svg>' }),
-        h('span', { class: 'brand-name' }, 'PenPlot', h('b', null, ' Studio'))),
+        h('span', { class: 'logo', html: '<svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="6" fill="currentColor"/><path d="M9 23c3-9 6-12 8-8s4 1 6-6" stroke="var(--panel)" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>' }),
+        h('span', { class: 'brand-name' }, 'PenPlot Studio')),
       nameInput,
       h('div', { class: 'hgroup' },
         UI.iconBtn('new', 'New project', () => App.files.newProject()),
@@ -477,12 +475,14 @@
         UI.iconBtn('save', 'Save project (Ctrl+S)', () => App.files.saveProject()),
         h('span', { class: 'vsep' }), undoB, redoB),
       h('div', { class: 'hspacer' }),
-      h('div', { class: 'hgroup printer-group' }, UI.icon('printer', 18), profSel, offsetPill,
-        UI.iconBtn('settings', 'Printer & plotter settings', () => UI.openPrinterSettings())),
+      h('div', { class: 'hgroup printer-group' }, UI.icon('printer', 15), profSel,
+        UI.iconBtn('settings', 'Printer & plotter settings', () => UI.openPrinterSettings(), { size: 15 })),
+      paperB,
+      h('span', { class: 'vsep' }),
       h('div', { class: 'hgroup' },
-        UI.btn('Calibrate', () => UI.openCalibration(), { icon: 'target', title: 'Calibration test G-code' }),
-        UI.iconBtn('help', 'How to plot on your X1C / help', () => UI.openHelp()),
-        UI.btn('Preview', () => PP.Preview.toggle(), { icon: 'play', cls: 'btn-preview', title: 'Animated draw preview' }),
+        UI.btn('Calibrate', () => UI.openCalibration(), { cls: 'btn-ghost', title: 'Calibration test files' }),
+        UI.btn('Help', () => UI.openHelp(), { cls: 'btn-ghost', title: 'How to plot on your X1C / help' }),
+        UI.btn('Preview', () => PP.Preview.toggle(), { cls: 'btn-preview', title: 'Animated draw preview' }),
         UI.btn('Download G-code', () => UI.openExport(), { icon: 'download', primary: true, title: 'Generate G-code (Ctrl+E)' })),
     );
   }
@@ -518,7 +518,35 @@
     const noz = h('span', { class: 'st-noz', title: 'Where the NOZZLE will be when the pen is at the cursor' }, '');
     const hint = h('span', { class: 'st-hint' }, '');
     const sel = h('span', { class: 'st-sel' }, '');
-    bar.append(pos, noz, sel, h('span', { class: 'hspacer' }), hint);
+    const plan = h('span', { class: 'st-plan' }, '');
+    const check = h('button', { class: 'st-check ok', onclick: () => showChecks() }, '');
+    bar.append(pos, noz, sel, hint, h('span', { class: 'hspacer' }), plan, check);
+
+    // plot summary (was a right-panel section): time, pens, line length; the chip lists anything to look at
+    let notes = [];
+    const summarize = U.debounce(() => {
+      let pl;
+      try { pl = App.buildPlan(); } catch (e) { console.error(e); return; }
+      const st = pl.stats, n = pl.jobs.length;
+      plan.textContent = n ? '≈ ' + U.formatDuration(st.time + 45) + ' · ' + n + (n === 1 ? ' pen' : ' pens') + ' · ' + U.formatLength(st.drawLen) + ' of line · ' + st.lifts + ' lifts' : '';
+      notes = [];
+      if (!n) notes.push(['info', App.emptyPlanMessage(pl)]);
+      else if (pl.clipped) notes.push(['warn', 'Some lines are outside the drawable area (shown in red) and will be clipped.']);
+      const hidden = S.project.layers.filter(l => !l.visible && S.project.objects.some(o => o.layerId === l.id));
+      if (hidden.length) notes.push(['info', hidden.length + ' hidden layer(s) will not be plotted.']);
+      PP.GCode.validateProfile(pl.profile).forEach(e => notes.push(['error', e]));
+      const worst = notes.some(x => x[0] === 'error') ? 'error' : notes.some(x => x[0] === 'warn') ? 'warn' : !n ? 'info' : 'ok';
+      check.className = 'st-check ' + worst;
+      U.clear(check);
+      check.append(PP.UI.icon(worst === 'ok' ? 'check' : worst === 'info' ? 'help' : 'warn', 12),
+        h('span', null, worst === 'ok' ? 'Ready to plot' : !n ? 'Nothing to plot' : notes.length + (notes.length === 1 ? ' note' : ' notes')));
+    }, 300);
+    function showChecks() {
+      if (!notes.length) return;
+      PP.UI.popover(check, h('div', { class: 'warns popover-pad' }, notes.map(([t, m]) => h('div', { class: 'warn-item ' + t }, PP.UI.icon(t === 'info' ? 'help' : 'warn', 14), h('span', null, m)))), { align: 'right' });
+    }
+    S.events.on('change', summarize); events.on('profile', summarize); events.on('prefs', summarize);
+    summarize();
     App.view.events.on('cursor', (w) => {
       if (!w) { pos.textContent = 'X —  Y —'; noz.textContent = ''; return; }
       const p = App.profile();
@@ -527,7 +555,7 @@
     });
     const defaultHint = () => {
       const tips = {
-        select: 'Click to select • drag to move • corner handles keep proportions (Shift = free) • Shift+drag rotate handle snaps 15°',
+        select: '',
         pan: 'Drag to pan • scroll to zoom',
         pen: 'Drag to draw freehand • smoothing is set in the Draw tab',
         line: 'Drag to draw a line • Shift snaps to 15°',
@@ -676,6 +704,7 @@
     window.addEventListener('pagehide', () => S.flushAutosave());
 
     // Preload the default font, restore uploaded fonts and the last session
+    PP.Fonts.restoreSystemFonts();
     PP.Fonts.load(PP.Fonts.DEFAULT).catch((e) => PP.UI.toast('Could not load the Hershey fonts (' + e.message + '). Check your internet connection - text needs them.', 'error', 8000));
     PP.Fonts.restoreCustomFonts();
     const restored = await S.restoreAutosave();

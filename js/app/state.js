@@ -146,6 +146,18 @@
     return true;
   };
 
+  /** Move a layer to position `index` (0 = plotted first). */
+  S.moveLayerTo = function (id, index) {
+    const L = S.project.layers;
+    const i = L.findIndex(l => l.id === id);
+    const j = Math.max(0, Math.min(L.length - 1, Math.round(index)));
+    if (i < 0 || i === j) return;
+    S.checkpoint();
+    const [layer] = L.splice(i, 1);
+    L.splice(j, 0, layer);
+    changed('layers');
+  };
+
   S.moveLayer = function (id, dir) {
     const L = S.project.layers;
     const i = L.findIndex(l => l.id === id);

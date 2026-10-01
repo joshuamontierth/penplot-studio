@@ -5,7 +5,8 @@
   const U = PP.U, G = PP.Geo, OBJ = PP.Objects, h = U.h;
   const UI = PP.UI;
 
-  UI.openImageTrace = async function (file) {
+  /** opts.mode: start in this trace mode (the Image tab's choice). */
+  UI.openImageTrace = async function (file, opts = {}) {
     const IT = PP.ImageTrace;
     if (!IT) { UI.toast('Image tracing module is not loaded.', 'error'); return; }
     let img;
@@ -19,7 +20,7 @@
     // fit both sides into the drawable area (a 20 mm minimum width made a 10 x 3000 px image 6 m tall)
     const fitW = Math.max(1, Math.min(aw, ah / (aspect || 1)));
     const st = {
-      mode: saved.mode && IT.modes.some(m => m.id === saved.mode) ? saved.mode : IT.modes[0].id,
+      mode: [opts.mode, saved.mode].find(id => id && IT.modes.some(m => m.id === id)) || IT.modes[0].id,
       params: saved.params || {},
       pre: Object.assign({ brightness: 0, contrast: 0, gamma: 1, blur: 0, invert: false }, saved.pre || {}),
       res: saved.res || 800,

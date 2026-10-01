@@ -185,9 +185,9 @@
       '<rect x="' + (cx - 24) + '" y="' + (cy - 24) + '" width="48" height="48" rx="6" fill="#2a313b" stroke="#465160"/>' +
       '<circle cx="' + cx + '" cy="' + cy + '" r="4" fill="#94a3b8"/>' +
       '<text x="' + cx + '" y="' + (cy - 29) + '" fill="#94a3b8" font-size="9" text-anchor="middle">nozzle</text>' +
-      '<line x1="' + cx + '" y1="' + cy + '" x2="' + px + '" y2="' + py + '" stroke="#10b981" stroke-dasharray="3 3"/>' +
-      '<circle cx="' + px + '" cy="' + py + '" r="5" fill="#10b981"/>' +
-      '<text x="' + (px + 8) + '" y="' + (py + 4) + '" fill="#10b981" font-size="9">pen</text>' +
+      '<line x1="' + cx + '" y1="' + cy + '" x2="' + px + '" y2="' + py + '" stroke="#4a72e0" stroke-dasharray="3 3"/>' +
+      '<circle cx="' + px + '" cy="' + py + '" r="5" fill="#4a72e0"/>' +
+      '<text x="' + (px + 8) + '" y="' + (py + 4) + '" fill="#4a72e0" font-size="9">pen</text>' +
       '<text x="8" y="16" fill="#7c8794" font-size="9">X ' + (ox >= 0 ? '+' : '') + U.fmt(ox, 1) + '  Y ' + (oy >= 0 ? '+' : '') + U.fmt(oy, 1) + '</text>' +
       '</svg>';
   }
@@ -324,7 +324,7 @@
 
     // same order as Help → Calibration
     const typeSeg = UI.segmented({
-      options: [{ value: 'frame', label: '1 Frame' }, { value: 'compact', label: '2 Z test' }, { value: 'offset', label: '3 Offset finder' }, { value: 'grid', label: 'Z × speed' }],
+      options: [{ value: 'frame', label: '1 Frame' }, { value: 'offset', label: '2 Offset finder' }, { value: 'compact', label: 'Z test' }, { value: 'grid', label: 'Z × speed' }],
       value: cur, onChange: (v) => { cur = v; st.type = v; save(); dryCb.setValue(v === 'frame'); refresh(); },
     });
     const save = () => PP.Storage.setLocal('calib', st);
@@ -375,7 +375,7 @@
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#12151a'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim() || '#e7e8eb'; ctx.fillRect(0, 0, W, H);
       const k = Math.min((W - 20) / p.bedWidth, (H - 20) / p.bedDepth);
       const ox = (W - p.bedWidth * k) / 2, oy = (H + p.bedDepth * k) / 2;
       ctx.setTransform(k, 0, 0, -k, ox, oy);
@@ -458,7 +458,7 @@
     return [
       h('p', { class: 'lead' }, 'PenPlot Studio turns your Bambu Lab X1 Carbon into a pen plotter. Design here, download G-code and plot from the SD card - no firmware changes.'),
       step(1, 'Install the pen mount', 'Print the Falu "Head Mount V1 - Series X & P" and fit a pen (Stabilo Point 88, Pilot G2, Micron...). Do not clip the module onto the printer yet - that happens at the first pause.'),
-      step(2, 'Calibrate once', 'Before your first real plot, work through the ', h('b', null, 'Calibration'), ' tab: a dry-run frame test, the offset finder and a Z test. It takes about 15 minutes and settles the pen offset and pen height for your mount.'),
+      step(2, 'Calibrate once', 'Before your first real plot, work through the ', h('b', null, 'Calibration'), ' tab: an empty run, a dry-run frame test and the offset finder. It takes about 15 minutes and confirms the pen offset for your mount.'),
       step(3, 'Design', 'Use the Text, Draw, Image, Patterns and Import tabs. Each layer is one pen: layers plot top to bottom with a pause to swap pens.'),
       step(4, 'Preview', 'Preview replays the actual G-code: pen strokes, travel moves and the safety check.'),
       step(5, 'Download and copy', 'Download the .gcode file and copy it to the root of the SD card (no folders, simple file name).'),
@@ -482,7 +482,7 @@
       h('ul', { class: 'tips' },
         h('li', null, 'Printer settings → ', h('b', null, 'Reset to defaults'), ' on your printer profile, then check the values (current: pen offset X', f(p.penOffsetX), ' Y', f(p.penOffsetY), ', nozzle safe zone X ', f(p.nozzleMinX), '-', f(p.nozzleMaxX), ' / Y ', f(p.nozzleMinY), '-', f(p.nozzleMaxY), ', Z-Draw ', f(p.zDraw), ', Z-Lift ', f(p.zLift), ').'),
         h('li', null, h('b', null, 'Look at the mount:'), ' the pen should sit left of and in front of the nozzle (offset X and Y both negative). If it sits to the right or behind, flip the sign before anything else - a wrong sign can put the pen past the edge of the plate.'),
-        h('li', null, h('b', null, 'Measure how far the pen tip sticks out below the nozzle.'), ' The pen touches the paper at about that Z, so set Z-Draw to it and Z-Lift about 6 mm higher (Printer settings → Z heights). Every test below starts from these values.'),
+        h('li', null, 'The default pen height (Z-Draw ', f(p.zDraw), ', Z-Lift ', f(p.zLift), ') suits the Falu mount with a Stabilo. Only if your pen sticks out much more or less than about ', f(p.zDraw), ' mm below the nozzle, change it in Printer settings → Z heights.'),
         h('li', null, 'In the printer settings turn off AI monitoring (spaghetti, purge chute pile-up and nozzle clumping detection) and ', h('b', null, 'Auto-recovery from step loss'), ': they can pause or re-home the toolhead with the holder attached.'),
         h('li', null, 'For the first runs lower Move speed to 80 mm/s, remove the top glass if it limits the spring travel, keep the door open, and know your emergency stop: ', h('b', null, 'Stop'), ' on the screen (Pause moves the toolhead to the purge chute) or the power switch.'),
         h('li', null, 'Clean any filament off the nozzle tip (the printer homes by touching the plate with it) and tape a sheet of paper over the drawable area (X ', f(R.minX), '-', f(R.maxX), ', Y ', f(R.minY), '-', f(R.maxY), ' mm).')),
@@ -497,16 +497,7 @@
         h('li', null, 'Watch the moves to and from the purge chute at each pause, with the holder on.'),
         h('li', null, 'When it finishes, remove the holder.')),
 
-      h('h3', null, '3. Z test: find the pen-down height (about 5 min)'),
-      h('p', null, 'In ', calLink('Calibrate → Z test', 'compact'), ', download with the default range (Z-Draw - 2 to Z-Draw + 3 in 1 mm steps) and run it with a pen. One cell is drawn per Z value, from the highest Z (lightest pressure) to the lowest, each labeled with its Z; the title is drawn last.'),
-      h('ul', { class: 'tips' },
-        h('li', null, 'Remember: larger Z = bed further from the nozzle = less pressure.'),
-        h('li', null, 'Pick the highest Z that gives a solid, even line and set it as Z-Draw (or 0.5 mm below it for a little more pressure).'),
-        h('li', null, 'Stop the print if the pen starts tearing or the module flexes.'),
-        h('li', null, 'Nothing drew at all? The pen touches higher than the test range: raise Z-Draw and Z-Lift and run it again - the range always follows the current Z-Draw.'),
-        h('li', null, 'For safety the pen never goes more than 4 mm below Z-Draw (and never below half of it), so a test cannot push the pen through the bed.')),
-
-      h('h3', null, '4. Offset finder (about 5 min)'),
+      h('h3', null, '3. Offset finder (about 5 min)'),
       h('p', null, 'In ', calLink('Calibrate → Offset finder', 'offset'), ', download and run it with a pen:'),
       h('ol', { class: 'tips' },
         h('li', null, h('b', null, 'First pause: attach'), ' the holder with the pen. The pen draws a 16 mm cross with a small circle while the nozzle sits at a known point near the middle of the bed.'),
@@ -515,10 +506,21 @@
       h('p', null, 'Enter the two numbers as Pen offset X / Y in Printer settings → Pen mount and save. For the Falu mount expect about X -28, Y -35.'),
       note('warn', 'Settle the offset before any full-size plot. The safe zone limits the nozzle, so a wrong offset cannot drive the module into the frame - but the drawing lands off by twice the error (about 56 mm for a wrong X sign) and can run past the edge of the plate.'),
 
-      h('h3', null, '5. Frame test with a pen'),
+      h('h3', null, '4. Frame test with a pen'),
       h('p', null, 'Run ', calLink('Calibrate → Frame', 'frame'), ' again without Dry run. The outline should land on the paper just inside the striped zone on the canvas, and the center cross in the middle of it. This confirms the offsets, the paper position and Z-Draw together. Then raise Move speed back up.'),
 
-      h('h3', null, '6. Optional: Z × speed grid'),
+      h('h3', null, 'Fine-tuning (only if lines are faint, tear or skip)'),
+      h('p', null, 'The defaults usually need no tuning. These tests help after a pen change or if the lines are not right.'),
+      h('h3', null, 'Z test: find the pen-down height'),
+      h('p', null, 'In ', calLink('Calibrate → Z test', 'compact'), ', download with the default range (Z-Draw - 2 to Z-Draw + 3 in 1 mm steps) and run it with a pen. One cell is drawn per Z value, from the highest Z (lightest pressure) to the lowest, each labeled with its Z; the title is drawn last.'),
+      h('ul', { class: 'tips' },
+        h('li', null, 'Remember: larger Z = bed further from the nozzle = less pressure.'),
+        h('li', null, 'Pick the highest Z that gives a solid, even line and set it as Z-Draw (or 0.5 mm below it for a little more pressure).'),
+        h('li', null, 'Stop the print if the pen starts tearing or the module flexes.'),
+        h('li', null, 'Nothing drew at all? The pen touches higher than the test range: raise Z-Draw and Z-Lift and run it again - the range always follows the current Z-Draw.'),
+        h('li', null, 'For safety the pen never goes more than 4 mm below Z-Draw (and never below half of it), so a test cannot push the pen through the bed.')),
+
+      h('h3', null, 'Z × speed grid'),
       h('p', null, calLink('Calibrate → Z × speed', 'grid'), ' draws the same Z columns at several speeds (rows). Use it to pick the fastest speed that still gives a clean line, then set Draw speed in Plotter settings.'),
 
       h('h3', null, 'Write down'),
