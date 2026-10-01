@@ -278,7 +278,7 @@
     paint();
     pane.append(UI.section('Image', [drop,
       h('div', { class: 'field' }, h('label', null, 'Trace style'), grid),
-      h('p', { class: 'hint' }, 'Outline and Centerline for line art; the others for photos. Drop an image on the bed to start too.')]));
+      h('p', { class: 'hint' }, 'Outline and Center line suit line art; the rest suit photos.')]));
   }
 
   // ---------------------------------------------------------------------------
@@ -444,22 +444,21 @@
   UI.importPrefs = () => importPrefs;
 
   function buildImport(pane) {
-    const drop = h('div', { class: 'dropzone', tabindex: '0' }, UI.icon('upload', 34), h('b', null, 'Import SVG'), h('span', null, 'Vector files from Inkscape, Illustrator, Figma...'));
+    const drop = h('button', { class: 'dropzone' }, UI.icon('upload', 22), h('span', null, 'Import an SVG file'));
     drop.addEventListener('click', () => PP.App.files.importSVG());
     const setP = (k) => (v) => { importPrefs[k] = v; PP.Storage.setLocal('importPrefs', importPrefs); };
     pane.append(
-      UI.section('SVG import', [
+      UI.section('SVG', [
         drop,
-        UI.checkField({ label: 'Put each stroke color on its own layer (multi-pen)', value: importPrefs.splitColors, onChange: setP('splitColors') }),
+        UI.checkField({ label: 'One layer per stroke color', value: importPrefs.splitColors, onChange: setP('splitColors') }),
         UI.checkField({ label: 'Hatch-fill filled shapes', value: importPrefs.fillShapes, onChange: setP('fillShapes') }),
-        h('div', { class: 'hint' }, 'Curves, arcs, transforms and <use> are supported. Convert text to paths before exporting from your editor. Imports are centered on the paper and scaled down if they do not fit.'),
       ]),
       UI.section('Project', [
         h('div', { class: 'btn-col' },
           UI.btn('Open project...', () => PP.App.files.openProject(), { icon: 'open' }),
           UI.btn('Save project', () => PP.App.files.saveProject(), { icon: 'save' }),
           UI.btn('Export design as SVG', () => PP.App.files.exportSVG(), { icon: 'download' })),
-        h('div', { class: 'hint' }, 'Your work is also autosaved in this browser.'),
+
       ]),
       UI.section('Examples', [h('div', { class: 'btn-col' },
         UI.btn('Greeting card', () => loadExample('card'), { icon: 'text' }),

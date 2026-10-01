@@ -65,6 +65,36 @@ describe('X1C profile defaults (HANDOFF §4.3)', () => {
   });
 });
 
+describe('A1 profile', () => {
+  const A1 = GC.BUILTIN_PROFILES.find((p) => p.id === 'bambu-a1');
+
+  it('has the pen 28 mm in front of the nozzle, the whole bed as safe zone, and no purge chute', () => {
+    expect(A1).toMatchObject({
+      penOffsetX: 0,
+      penOffsetY: -28,
+      nozzleMinX: 0,
+      nozzleMaxX: 256,
+      nozzleMinY: 0,
+      nozzleMaxY: 256,
+      purgeChute: false,
+      safeStart: false,
+    });
+    expect(GC.validateProfile(GC.normalizeProfile(A1))).toEqual([]);
+  });
+
+  it('gives a 254 x 226 mm drawable area (256 x 228 minus the 1 mm margin)', () => {
+    expect(GC.reachableRect(GC.normalizeProfile(A1))).toEqual({ minX: 1, maxX: 255, minY: 1, maxY: 227 });
+  });
+
+  it('homes without the X1/P1 G380 preamble and passes the simulator', () => {
+    const jobs = [job([square(100, 100, 10)])];
+    const res = GC.build(jobs, A1, { date: DATE });
+    expect(res.text).not.toMatch(/G380/);
+    expect(res.text).toMatch(/^G28/m);
+    expect(SIM.check(res.text, GC.normalizeProfile(A1), jobs).errors).toEqual([]);
+  });
+});
+
 describe('normalizeProfile', () => {
   it('parses numeric strings and replaces non-numbers with defaults', () => {
     const p = GC.normalizeProfile({ zDraw: '12.5', zLift: 'abc', drawSpeed: null });

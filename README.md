@@ -78,6 +78,7 @@ GitHub Release. Builds are unsigned (SmartScreen warns). On Ubuntu 24.04+ the Ap
 | **Preview** | Animates the **simulated G-code**: pen strokes, travel moves, nozzle/toolhead position, and a safety badge |
 | **Safety check** | Every exported file is replayed in `js/core/gcodesim.js` (see below) |
 | **Calibration** | Z × speed grid, compact Z strip, frame test, **Offset finder** |
+| **Printers** | Bambu Lab X1 Carbon, X1/X1E and P1S/P1P (Falu mount), A1 (3dplotter.xyz holder), and a generic Marlin profile |
 
 ## X1C defaults
 

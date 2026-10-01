@@ -1490,7 +1490,7 @@
       ],
     },
     {
-      id: 'centerline', name: 'Centerline (line art)',
+      id: 'centerline', name: 'Center line',
       description: 'Thins line drawings and handwriting to a single stroke through the middle of each line.',
       params: [
         { key: 'threshold', label: 'Threshold', type: 'range', min: 0, max: 1, step: 0.01, default: 0.5 },
@@ -1503,7 +1503,7 @@
       ],
     },
     {
-      id: 'edges', name: 'Edge detection',
+      id: 'edges', name: 'Edges',
       description: 'Canny edge detection: draws the strongest edges of a photo as lines.',
       params: [
         { key: 'sigma', label: 'Blur sigma (px)', type: 'range', min: 0, max: 5, step: 0.1, default: 1.4 },
@@ -1514,7 +1514,7 @@
       ],
     },
     {
-      id: 'contours', name: 'Contour levels',
+      id: 'contours', name: 'Contours',
       description: 'Topographic iso-lines at evenly spaced gray levels.',
       params: [
         { key: 'levels', label: 'Levels', type: 'int', min: 1, max: 32, step: 1, default: 8 },
@@ -1560,7 +1560,7 @@
       ],
     },
     {
-      id: 'stipple', name: 'Stipple dots',
+      id: 'stipple', name: 'Stipple',
       description: 'Weighted random dots, denser in dark areas, ordered for short pen travel.',
       params: [
         { key: 'count', label: 'Dot count', type: 'int', min: 100, max: 20000, step: 100, default: 4000 },

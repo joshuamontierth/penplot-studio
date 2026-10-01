@@ -49,23 +49,37 @@
     layerPause: true,
     progress: true,
     heatersOff: true,
+    // X1/P1: M400 U1 pauses park the toolhead at the purge chute (confirmed on an X1C); used for the instructions
+    purgeChute: true,
     startGcode: '',
     endGcode: '',
   };
 
   const FALU_MOUNT = 'Falu UMTS / "Head Mount V1 - Series X & P" (pen about 28 mm left of and 35 mm in front of the nozzle - confirm with the Offset finder)';
 
+  const A1_MOUNT = 'A1 pen holder (3dplotter.xyz: pen about 28 mm in front of the nozzle - confirm with the Offset finder)';
+
   const BUILTIN_PROFILES = [
     Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', builtin: true, mount: FALU_MOUNT }),
     Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', builtin: true, mount: FALU_MOUNT }),
     Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', builtin: true, mount: FALU_MOUNT }),
+    // A1: open bed-slinger (the bed moves in Y, the toolhead in X and Z). No door or enclosure walls for the holder
+    // to hit, so the whole bed is the nozzle's safe zone; the pen sits in front of the nozzle, which leaves a
+    // 256 x 228 mm plot area (3dplotter.xyz). No purge chute, and no X1/P1 G380 start preamble.
+    Object.assign({}, BAMBU_BASE, {
+      id: 'bambu-a1', name: 'Bambu Lab A1', builtin: true, mount: A1_MOUNT,
+      nozzleMinX: 0, nozzleMaxX: 256, nozzleMinY: 0, nozzleMaxY: 256,
+      penOffsetX: 0, penOffsetY: -28,
+      safeStart: false, purgeChute: false,
+      parkX: 128, parkY: 128, endX: 128, endY: 220,
+    }),
     Object.assign({}, BAMBU_BASE, {
       id: 'custom', name: 'Custom Board (Marlin)', builtin: true, firmware: 'marlin',
       mount: 'Generic pen holder - measure and enter your own offsets',
       penOffsetX: 0, penOffsetY: 0, zDraw: 2, zLift: 6, zAttach: 30, zEnd: 40,
       pauseCommand: 'M0 Attach pen and click to resume', parkX: 110, parkY: 20, endX: 110, endY: 200,
       bedWidth: 220, bedDepth: 220, nozzleMinX: 0, nozzleMinY: 0, nozzleMaxX: 220, nozzleMaxY: 220, travelSpeed: 120, accel: 1500,
-      safeStart: false, endPause: false,
+      safeStart: false, endPause: false, purgeChute: false,
     }),
   ];
 

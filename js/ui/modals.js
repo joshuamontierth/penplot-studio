@@ -271,19 +271,18 @@
 
     const x1c = p.firmware === 'bambu';
     const instructions = h('div', { class: 'attach-steps' },
-      h('h3', null, x1c ? 'Pen Attachment Mode (X1C) - what happens when you print' : 'Running the file'),
+      h('h3', null, x1c ? 'What happens when you print' : 'Running the file'),
       h('ol', null,
         h('li', null, 'Copy the .gcode file to the ', h('b', null, 'root of the SD card'), ' (no folders, simple file name) and put the card back in the printer.'),
         h('li', null, 'Tape the paper down where the canvas shows it. Do ', h('b', null, 'not'), ' attach the pen holder yet.'),
         h('li', null, 'On the printer screen: ', h('b', null, 'Print files → SD card'), ' → pick the file → Print.'),
-        x1c ? h('li', null, 'Before plotting, turn off AI monitoring (spaghetti, purge chute pile-up and nozzle clumping detection) and ', h('b', null, 'Auto-recovery from step loss'), ' in the printer settings: they can pause or re-home the toolhead with the holder attached.') : null,
-        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? ' While paused the firmware moves the toolhead to the purge chute (back left) and warms the nozzle to about 90 °C - do not touch it. On Resume it waits 30-60 s for the nozzle to cool, then returns.' : null),
-        p.pauseForAttach ? h('li', null, 'Clip the pen holder onto the toolhead where it stops, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '. Do not jog the toolhead with the holder on.') : null,
+        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? (p.purgeChute ? ' While paused the firmware moves the toolhead to the purge chute (back left) and warms the nozzle (about 90 °C) - do not touch it. On Resume it waits 30-60 s, then returns.' : ' The nozzle can warm up while paused - do not touch it.') : null),
+        p.pauseForAttach ? h('li', null, 'Clip the pen holder onto the toolhead, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '.') : null,
         plan.jobs.length > 1 && mode === 'combined' && p.layerPause ? h('li', null, 'Between layers the printer pauses again: swap to the next pen color and press Resume.') : null,
         p.endPause
           ? h('li', null, 'At the end the bed lowers and the printer pauses one last time: ', h('b', null, 'remove the pen holder'), ', then press Resume to finish. Never let a normal 3D print start with the module attached.')
           : h('li', null, 'When it finishes the bed lowers and the toolhead moves to the back. Remove the pen holder before your next 3D print.')),
-      h('p', { class: 'hint' }, 'Tip: run a Dry run first without the pen to confirm the toolhead stays over your paper. In an emergency use Stop on the screen (Pause moves the toolhead) or the power switch.'));
+      h('p', { class: 'hint' }, 'Tip: run a Dry run first without the pen to confirm the toolhead stays over your paper. Pause or Stop on the printer screen work at any time.'));
 
     const body = h('div', { class: 'export' },
       summary,
@@ -455,6 +454,7 @@
   const calLink = (label, type) => h('a', { href: '#', onclick: (e) => { e.preventDefault(); while (UI.closeTopModal()); UI.openCalibration(type); } }, label);
 
   function helpStart() {
+    const p = PP.App.profile();
     return [
       h('p', { class: 'lead' }, 'PenPlot Studio turns your Bambu Lab X1 Carbon into a pen plotter. Design here, download G-code and plot from the SD card - no firmware changes.'),
       step(1, 'Install the pen mount', 'Print the Falu "Head Mount V1 - Series X & P" and fit a pen (Stabilo Point 88, Pilot G2, Micron...). Do not clip the module onto the printer yet - that happens at the first pause.'),
@@ -463,7 +463,7 @@
       step(4, 'Preview', 'Preview replays the actual G-code: pen strokes, travel moves and the safety check.'),
       step(5, 'Download and copy', 'Download the .gcode file and copy it to the root of the SD card (no folders, simple file name).'),
       step(6, 'Tape the paper', 'Tape it where the canvas shows the paper. Keep tape away from the plate center, where the printer homes.'),
-      step(7, 'Print, attach, plot', 'Start it from Print files → SD card. The printer homes, lowers the bed and pauses; while paused the toolhead sits at the purge chute (back left). Clip the pen holder on there, check the pen, press Resume. At the end the bed lowers and the toolhead moves to the back: remove the holder then.'),
+      step(7, 'Print, attach, plot', 'Start it from Print files → SD card. The printer homes, lowers the bed and pauses' + (p.purgeChute ? ' (the toolhead waits at the purge chute, back left)' : '') + '. Clip the pen holder on, check the pen, press Resume. At the end the bed lowers and the toolhead moves out of the way: remove the holder then.'),
       step(8, 'Tune', 'Faint lines: lower Z-Draw by 0.5 mm. Tearing or blobs: raise it. Ghost lines on travel moves: raise Z-Lift.'),
       h('h3', null, 'Coordinates'),
       h('p', { class: 'hint' }, 'Everything on the canvas is in pen coordinates: millimetres from the front-left corner of the plate. The G-code converts them to nozzle positions (nozzle = pen - offset). The striped zone is where the pen cannot reach or the module could collide.'),
@@ -483,18 +483,17 @@
         h('li', null, 'Printer settings → ', h('b', null, 'Reset to defaults'), ' on your printer profile, then check the values (current: pen offset X', f(p.penOffsetX), ' Y', f(p.penOffsetY), ', nozzle safe zone X ', f(p.nozzleMinX), '-', f(p.nozzleMaxX), ' / Y ', f(p.nozzleMinY), '-', f(p.nozzleMaxY), ', Z-Draw ', f(p.zDraw), ', Z-Lift ', f(p.zLift), ').'),
         h('li', null, h('b', null, 'Look at the mount:'), ' the pen should sit left of and in front of the nozzle (offset X and Y both negative). If it sits to the right or behind, flip the sign before anything else - a wrong sign can put the pen past the edge of the plate.'),
         h('li', null, 'The default pen height (Z-Draw ', f(p.zDraw), ', Z-Lift ', f(p.zLift), ') suits the Falu mount with a Stabilo. Only if your pen sticks out much more or less than about ', f(p.zDraw), ' mm below the nozzle, change it in Printer settings → Z heights.'),
-        h('li', null, 'In the printer settings turn off AI monitoring (spaghetti, purge chute pile-up and nozzle clumping detection) and ', h('b', null, 'Auto-recovery from step loss'), ': they can pause or re-home the toolhead with the holder attached.'),
-        h('li', null, 'For the first runs lower Move speed to 80 mm/s, remove the top glass if it limits the spring travel, keep the door open, and know your emergency stop: ', h('b', null, 'Stop'), ' on the screen (Pause moves the toolhead to the purge chute) or the power switch.'),
+        h('li', null, 'For the first runs lower Move speed to 80 mm/s' + (p.purgeChute ? ', remove the top glass if it limits the spring travel, keep the door open,' : ',') + ' and keep a hand near Pause or Stop on the printer screen.'),
         h('li', null, 'Clean any filament off the nozzle tip (the printer homes by touching the plate with it) and tape a sheet of paper over the drawable area (X ', f(R.minX), '-', f(R.maxX), ', Y ', f(R.minY), '-', f(R.maxY), ' mm).')),
 
       h('h3', null, '1. Empty run: nothing attached (about 3 min)'),
-      h('p', null, 'Download ', calLink('Calibrate → Frame', 'frame'), ' with ', h('b', null, 'Dry run'), ' ticked and run it without attaching anything - just press Resume at each pause. Watch where the toolhead goes when it pauses (the purge chute at the back left), how it returns on Resume, and that the end only lowers the bed and moves the toolhead to the back.'),
+      h('p', null, 'Download ', calLink('Calibrate → Frame', 'frame'), ' with ', h('b', null, 'Dry run'), ' ticked and run it without attaching anything - just press Resume at each pause. Watch where the toolhead goes when it pauses' + (p.purgeChute ? ' (the purge chute at the back left)' : '') + ', how it returns on Resume, and that the end only lowers the bed and moves the toolhead out of the way.'),
 
       h('h3', null, '2. Frame test with the holder, no pen (about 3 min)'),
       h('p', null, 'Run the same dry-run file again and attach the holder ', h('b', null, 'without a pen'), ' at the first pause. The toolhead traces the outline of the whole drawable area at Z-Lift, then a center cross.'),
       h('ul', { class: 'tips' },
         h('li', null, 'Watch the clearance to the door, the front frame and the left wall along the whole outline. If anything comes close, stop and shrink the nozzle limits in Printer settings → Bed & limits.'),
-        h('li', null, 'Watch the moves to and from the purge chute at each pause, with the holder on.'),
+        h('li', null, 'Watch the toolhead\'s moves at each pause, with the holder on.'),
         h('li', null, 'When it finishes, remove the holder.')),
 
       h('h3', null, '3. Offset finder (about 5 min)'),
@@ -537,9 +536,9 @@
       h('ul', { class: 'tips' },
         h('li', null, h('b', null, 'Never attach the pen holder before the first pause.'), ' The printer probes the plate with the nozzle while homing.'),
         h('li', null, h('b', null, 'Never start a normal 3D print with the module attached'), ' - it can collide when the printer cuts filament.'),
-        h('li', null, 'Turn off AI monitoring (spaghetti, purge chute pile-up, nozzle clumping) and Auto-recovery from step loss before plotting: they can pause or re-home the toolhead with the holder attached.'),
-        h('li', null, 'Emergency: use ', h('b', null, 'Stop'), ' on the screen or the power switch. Pause moves the toolhead to the purge chute. Never jog the toolhead with the holder attached.'),
-        h('li', null, 'During every pause the firmware warms the nozzle to about 90 °C (then waits for it to cool on Resume). Keep fingers off the nozzle while attaching or removing the holder, and make sure the holder does not rest against the hotend - PLA softens around 60 °C.'),
+        h('li', null, 'If the printer has Auto-recovery from step loss, consider turning it off: a re-home in the middle of a plot moves the toolhead to its corner with the holder on.'),
+        h('li', null, 'Emergency: press Pause or Stop on the printer screen, or switch the printer off. Don\'t move the toolhead by hand with the holder attached.'),
+        h('li', null, 'The nozzle can warm up during pauses (about 90 °C on the X1C). Keep fingers off it while attaching or removing the holder, and make sure the holder does not rest against the hotend - PLA softens around 60 °C.'),
         h('li', null, 'Heaters stay off and the G-code contains no extrusion.'),
         h('li', null, 'Every file is replayed in a G-code simulator before download. It checks the module safe zone, pen heights, travel lifts, pauses and the end of the file, and asks before you download a file that fails.'),
         h('li', null, 'The nozzle safe zone (Printer settings → Bed & limits) keeps the module away from the frame and door. The striped area on the canvas is where the pen cannot go.'),
