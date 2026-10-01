@@ -439,7 +439,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const [fx, fy] = this.toScreen(p.bedWidth / 2, 0);
-      ctx.fillText('▼ FRONT OF PRINTER (door side)', fx, fy + 20);
+      ctx.fillText('▼ FRONT OF PRINTER' + (p.door ? ' (door side)' : ''), fx, fy + 20);
       const [bx, by] = this.toScreen(p.bedWidth / 2, p.bedDepth);
       ctx.textBaseline = 'bottom';
       ctx.fillText('▲ BACK OF PRINTER', bx, by - 8);

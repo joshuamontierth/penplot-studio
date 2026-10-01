@@ -467,6 +467,15 @@ Record every answer. They settle the assumptions in §3.
    Hershey attribution) and opentype.js 1.3.4 into `vendor/`, and fall back to the CDN.
 8. **Profile migration:** add `schemaVersion` to stored profiles, and on v1 → v2 reset built-in overrides for offset
    and limits, with a toast.
+8b. **`.gcode.3mf` export (pinned 2026-10-01)**, so the cloud and Bambu Handy keep working.
+   - Waiting for the user's own X1C `.gcode.3mf` files in `experiments/3mf-samples/` (git-ignored), plus the
+     printer firmware and Bambu Studio versions.
+   - Plan:
+     1. Use the fixed parts (about 540 settings keys, the printer model id, list lengths) from those files as a
+        template.
+     2. Fill in the plate G-code, its MD5, the time estimate, zero filament and a thumbnail.
+     3. Test on hardware: start from the SD card, then open in Studio and Print through the cloud, then watch in
+        Handy.
 9. **Features after hardware validation:** `.gcode.3mf` export (port bambox) for Bambu Studio/Handy LAN sending;
    direct LAN upload (FTPS + MQTT) through a small local helper, since browsers can't do FTPS; a G-code
    importer/viewer that runs the simulator on any file; a Web Worker for tracing; an "estimated plot time" warning

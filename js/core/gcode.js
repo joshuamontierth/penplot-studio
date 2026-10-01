@@ -51,6 +51,9 @@
     heatersOff: true,
     // X1/P1: M400 U1 pauses park the toolhead at the purge chute (confirmed on an X1C); used for the instructions
     purgeChute: true,
+    // labels: short printer name for the welcome design, and whether the front has a door (canvas orientation label)
+    shortName: '',
+    door: false,
     startGcode: '',
     endGcode: '',
   };
@@ -60,21 +63,21 @@
   const A1_MOUNT = 'A1 pen holder (3dplotter.xyz: pen about 28 mm in front of the nozzle - confirm with the Offset finder)';
 
   const BUILTIN_PROFILES = [
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', builtin: true, mount: FALU_MOUNT }),
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', builtin: true, mount: FALU_MOUNT }),
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', shortName: 'X1C', door: true, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', shortName: 'X1', door: true, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', shortName: 'P1S', builtin: true, mount: FALU_MOUNT }),
     // A1: open bed-slinger (the bed moves in Y, the toolhead in X and Z). No door or enclosure walls for the holder
     // to hit, so the whole bed is the nozzle's safe zone; the pen sits in front of the nozzle, which leaves a
     // 256 x 228 mm plot area (3dplotter.xyz). No purge chute, and no X1/P1 G380 start preamble.
     Object.assign({}, BAMBU_BASE, {
-      id: 'bambu-a1', name: 'Bambu Lab A1', builtin: true, mount: A1_MOUNT,
+      id: 'bambu-a1', name: 'Bambu Lab A1', shortName: 'A1', builtin: true, mount: A1_MOUNT,
       nozzleMinX: 0, nozzleMaxX: 256, nozzleMinY: 0, nozzleMaxY: 256,
       penOffsetX: 0, penOffsetY: -28,
       safeStart: false, purgeChute: false,
       parkX: 128, parkY: 128, endX: 128, endY: 220,
     }),
     Object.assign({}, BAMBU_BASE, {
-      id: 'custom', name: 'Custom Board (Marlin)', builtin: true, firmware: 'marlin',
+      id: 'custom', name: 'Custom Board (Marlin)', shortName: 'plotter', builtin: true, firmware: 'marlin',
       mount: 'Generic pen holder - measure and enter your own offsets',
       penOffsetX: 0, penOffsetY: 0, zDraw: 2, zLift: 6, zAttach: 30, zEnd: 40,
       pauseCommand: 'M0 Attach pen and click to resume', parkX: 110, parkY: 20, endX: 110, endY: 200,

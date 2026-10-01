@@ -481,7 +481,7 @@
     const has = (id) => PP.Patterns && PP.Patterns.get(id);
     if (kind === 'card' || kind === 'welcome') {
       objs.push(OBJ.create.shape('rect', { x: c.x, y: c.y, w: W - 20, h: H - 20, radius: 6, name: 'Border' }));
-      objs.push(OBJ.create.text({ text: 'Hello from my X1C!', font: 'h:scripts', size: 12, x: c.x, y: c.y + H * 0.22, align: 'center' }));
+      objs.push(OBJ.create.text({ text: 'Hello from my ' + printerShortName() + '!', font: 'h:scripts', size: 12, x: c.x, y: c.y + H * 0.22, align: 'center' }));
       objs.push(OBJ.create.text({ text: 'Made with a pen plotter', font: 'h:futural', size: 4, x: c.x, y: c.y - H * 0.36, align: 'center' }));
       if (has('spirograph')) objs.push(OBJ.create.pattern('spirograph', { size: Math.min(W, H) * 0.42 }, { x: c.x, y: c.y - H * 0.06 }));
     } else if (kind === 'spiro' && has('spirograph')) {
@@ -520,6 +520,12 @@
   };
 
   // ---------------------------------------------------------------------------
+  /** "X1C", "A1"...: the profile's short name, else its name without the brand. */
+  function printerShortName() {
+    const p = PP.App.profile();
+    return p.shortName || String(p.name || 'plotter').replace(/^Bambu Lab /, '');
+  }
+
   UI.buildLeftPanel = function (host) {
     tabBar = h('div', { class: 'tabs' });
     tabBody = h('div', { class: 'tab-body' });

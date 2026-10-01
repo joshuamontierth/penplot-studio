@@ -79,6 +79,8 @@ describe('A1 profile', () => {
       purgeChute: false,
       safeStart: false,
     });
+    expect(A1).toMatchObject({ shortName: 'A1', door: false });
+    expect(X1C).toMatchObject({ shortName: 'X1C', door: true });
     expect(GC.validateProfile(GC.normalizeProfile(A1))).toEqual([]);
   });
 
