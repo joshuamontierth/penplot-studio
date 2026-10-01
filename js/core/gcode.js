@@ -42,7 +42,9 @@
     // The firmware moves the toolhead to the purge chute (back-left) during every M400 U1 pause and back on
     // resume, so park close to it: the move it makes with the holder attached stays short.
     parkX: 80, parkY: 245,
-    endPause: true,
+    // no end pause (user's choice after the first dry run): the job ends with the bed lowered and the toolhead
+    // at the back, and nothing runs after a plain file's last line - remove the holder then
+    endPause: false,
     endX: 152, endY: 250,
     layerPause: true,
     progress: true,

@@ -78,7 +78,7 @@ project up. Read sections 1–3 before touching printer-related code._
 | A6 | `M400 P50` dwell works on the X1C | High | Bambu's own end G-code uses `M400 P100` | Visual |
 | A7 | Plain `.gcode` from the SD root prints from the screen ("Print files → SD card") | High | Instructables + forum | First run |
 | A8 | The `G380` safe-start preamble (copied from Bambu's start G-code) is harmless on the X1C/P1 | High | It's in the official X1 start G-code | First run (the bed drops about 10 mm before homing) |
-| A9 | After a plain-gcode job ends, the firmware makes **no extra moves** (no filament cut) | Unknown | Falu's warning is about slicer end G-code | We add an **end pause** ("remove the pen holder"), so it's safe either way |
+| A9 | After a plain-gcode job ends, the firmware makes **no extra moves** (no filament cut) | High (session 2 review; first dry run ended cleanly) | Falu's warning is about slicer end G-code | Since 2026-09-30 the X1C default has **no end pause**, so this assumption is now load-bearing: the holder is removed after the job ends |
 | A12 | Firmware features stay off during plotting: AI monitoring (spaghetti, purge chute pile-up, nozzle clumping) and **Auto-recovery from step loss** (it re-homes XY toward the front-right, which would hit the front frame with the holder on) | Required, user action | Session 2 review (Bambu wiki/forum) | Printer settings before the first run; the export dialog and Help say so |
 | A10 | `M73 P<pct> R<min>` shows progress on the X1C screen | High | Used in Bambu files | Visual |
 | A11 | 200 mm/s travel and 4000 mm/s² acceleration don't shake the clipped-on holder loose | Unknown | — | First plot; lower in settings if needed |
@@ -151,7 +151,7 @@ GSim.check(text, profile, jobs) ⇒ {ok, errors, warnings, strokes, travels, pau
 | `drawSpeed`, `travelSpeed`, `zSpeed` | 30, 200, 15 mm/s | |
 | `accel` | 4000 | `M204 S`. 0 = don't send |
 | `penDownDelay`, `penUpDelay` | 50, 0 ms | `M400 P` (Bambu) or `G4 P` (Marlin) |
-| `home`, `safeStart`, `pauseForAttach`, `layerPause`, `endPause`, `progress`, `heatersOff` | all true | |
+| `home`, `safeStart`, `pauseForAttach`, `layerPause`, `progress`, `heatersOff` | all true | `endPause` is false (user's choice after the first dry run) |
 | `pauseCommand` | `M400 U1` | Marlin: `M0 …` |
 | `parkX/Y` | 80, 245 | Nozzle position before each pause (the firmware then moves to the purge chute, A5) |
 | `endX/Y` | 152, 250 | |
@@ -213,7 +213,7 @@ G90 / G1 Z20 F900
   [pen change: G1 Z60 / park / M400 / ; PAUSE: change to the pen … / M400 U1 / G90 / G1 Z20]
   G1 X Y F12000 / G1 Z<zd> F900 ; pen down / M400 P50 / G1 X Y F1800 … / G1 Z20 F900 ; pen up / M73 P R
 ; ===== End =====
-G1 Z80 / G1 X80 Y245 / M400 / ; PAUSE: remove the pen holder now … / ; PP_PAUSE remove / M400 U1 / G90
+G1 Z80                                  ; [endPause on: G1 X80 Y245 / M400 / ; PAUSE: remove the pen holder now … / ; PP_PAUSE remove / M400 U1 / G90]
 G1 X152 Y250 / M400 / [custom end] / M73 P100 R0
 ```
 

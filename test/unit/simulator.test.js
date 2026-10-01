@@ -66,7 +66,7 @@ describe('holder-attached hardening', () => {
     ];
     const r = SIM.check(build(jobs), P, jobs);
     expect(r.errors).toEqual([]);
-    expect(r.pauses.map((p) => p.action)).toEqual(['attach', 'swap', 'remove']);
+    expect(r.pauses.map((p) => p.action)).toEqual(['attach', 'swap']);
   });
 
   it('keeps names with line breaks inside comments', () => {

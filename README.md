@@ -97,7 +97,7 @@ G1 Z20                      ; pen up (travel height)
   G1 X.. Y.. F1800 ...      ; draw
   G1 Z20 F900               ; pen up
   (pen change between layers: bed to Z60, park, M400 U1)
-G1 Z80 / park / M400 U1     ; LAST PAUSE: remove the pen holder, press Resume
+G1 Z80                      ; bed down at the end (no end pause by default: remove the holder after it finishes)
 G1 X152 Y250                ; toolhead to the back
 ```
 

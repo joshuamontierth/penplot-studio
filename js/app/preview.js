@@ -192,7 +192,7 @@
     if (!sim) return;
     if (sim.ok) {
       const s = sim.stats;
-      PP.UI.toast('Simulated the real G-code: ' + s.moves.toLocaleString() + ' moves, ' + s.penDowns + ' strokes, ' + sim.pauses.length + ' pauses. No collisions, pen always lifted for travel, drawing stays inside the drawable area.' + (sim.warnings.length ? ' Notes: ' + sim.warnings.map(PP.GSim.fmtMsg).join(' | ') : ''), 'info', 9000);
+      PP.UI.toast('Simulated the real G-code: ' + s.moves.toLocaleString() + ' moves, ' + s.penDowns + ' strokes, ' + sim.pauses.length + (sim.pauses.length === 1 ? ' pause.' : ' pauses.') + ' No collisions, pen always lifted for travel, drawing stays inside the drawable area.' + (sim.warnings.length ? ' Notes: ' + sim.warnings.map(PP.GSim.fmtMsg).join(' | ') : ''), 'info', 9000);
     } else {
       PP.UI.toast('G-code problems: ' + sim.errors.map(PP.GSim.fmtMsg).join(' | '), 'error', 12000);
     }

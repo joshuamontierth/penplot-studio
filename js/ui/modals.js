@@ -463,7 +463,7 @@
       step(4, 'Preview', 'Preview replays the actual G-code: pen strokes, travel moves and the safety check.'),
       step(5, 'Download and copy', 'Download the .gcode file and copy it to the root of the SD card (no folders, simple file name).'),
       step(6, 'Tape the paper', 'Tape it where the canvas shows the paper. Keep tape away from the plate center, where the printer homes.'),
-      step(7, 'Print, attach, plot', 'Start it from Print files → SD card. The printer homes, lowers the bed and pauses; while paused the toolhead sits at the purge chute (back left). Clip the pen holder on there, check the pen, press Resume. At the end it pauses once more so you can remove the holder.'),
+      step(7, 'Print, attach, plot', 'Start it from Print files → SD card. The printer homes, lowers the bed and pauses; while paused the toolhead sits at the purge chute (back left). Clip the pen holder on there, check the pen, press Resume. At the end the bed lowers and the toolhead moves to the back: remove the holder then.'),
       step(8, 'Tune', 'Faint lines: lower Z-Draw by 0.5 mm. Tearing or blobs: raise it. Ghost lines on travel moves: raise Z-Lift.'),
       h('h3', null, 'Coordinates'),
       h('p', { class: 'hint' }, 'Everything on the canvas is in pen coordinates: millimetres from the front-left corner of the plate. The G-code converts them to nozzle positions (nozzle = pen - offset). The striped zone is where the pen cannot reach or the module could collide.'),
@@ -488,14 +488,14 @@
         h('li', null, 'Clean any filament off the nozzle tip (the printer homes by touching the plate with it) and tape a sheet of paper over the drawable area (X ', f(R.minX), '-', f(R.maxX), ', Y ', f(R.minY), '-', f(R.maxY), ' mm).')),
 
       h('h3', null, '1. Empty run: nothing attached (about 3 min)'),
-      h('p', null, 'Download ', calLink('Calibrate → Frame', 'frame'), ' with ', h('b', null, 'Dry run'), ' ticked and run it without attaching anything - just press Resume at each pause. Watch where the toolhead goes when it pauses (expected: the purge chute at the back left), how it returns on Resume, and that the end only lowers the bed and moves the toolhead to the back.'),
+      h('p', null, 'Download ', calLink('Calibrate → Frame', 'frame'), ' with ', h('b', null, 'Dry run'), ' ticked and run it without attaching anything - just press Resume at each pause. Watch where the toolhead goes when it pauses (the purge chute at the back left), how it returns on Resume, and that the end only lowers the bed and moves the toolhead to the back.'),
 
       h('h3', null, '2. Frame test with the holder, no pen (about 3 min)'),
       h('p', null, 'Run the same dry-run file again and attach the holder ', h('b', null, 'without a pen'), ' at the first pause. The toolhead traces the outline of the whole drawable area at Z-Lift, then a center cross.'),
       h('ul', { class: 'tips' },
         h('li', null, 'Watch the clearance to the door, the front frame and the left wall along the whole outline. If anything comes close, stop and shrink the nozzle limits in Printer settings → Bed & limits.'),
         h('li', null, 'Watch the moves to and from the purge chute at each pause, with the holder on.'),
-        h('li', null, 'At the last pause remove the holder before pressing Resume.')),
+        h('li', null, 'When it finishes, remove the holder.')),
 
       h('h3', null, '3. Z test: find the pen-down height (about 5 min)'),
       h('p', null, 'In ', calLink('Calibrate → Z test', 'compact'), ', download with the default range (Z-Draw - 2 to Z-Draw + 3 in 1 mm steps) and run it with a pen. One cell is drawn per Z value, from the highest Z (lightest pressure) to the lowest, each labeled with its Z; the title is drawn last.'),

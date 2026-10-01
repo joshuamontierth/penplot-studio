@@ -50,7 +50,8 @@ describe('X1C profile defaults (HANDOFF §4.3)', () => {
       endX: 152,
       endY: 250,
     });
-    for (const k of ['home', 'safeStart', 'pauseForAttach', 'layerPause', 'endPause', 'progress', 'heatersOff']) {
+    expect(X1C.endPause).toBe(false);
+    for (const k of ['home', 'safeStart', 'pauseForAttach', 'layerPause', 'progress', 'heatersOff']) {
       expect(X1C[k], k).toBe(true);
     }
   });
@@ -155,21 +156,28 @@ describe('build: Bambu file structure (HANDOFF §5)', () => {
     expect(res.text).not.toMatch(/^G4 /m);
   });
 
-  it('ends with the bed lowered, an end pause to remove the holder, then the end position', () => {
+  it('ends with the bed lowered and the toolhead at the back, with no end pause', () => {
     const end = ls.indexOf('; ===== End =====');
     const lower = find(ls, /^G1 Z80 F900$/, end);
-    const pause = find(ls, /^M400 U1$/, lower);
-    const out = find(ls, /^G1 X152 Y250 F12000$/, pause);
+    const out = find(ls, /^G1 X152 Y250 F12000$/, lower);
     expect(lower).toBeGreaterThan(end);
-    expect(ls.slice(lower, pause).join('\n')).toMatch(/remove the pen holder/);
-    expect(out).toBeGreaterThan(pause);
+    expect(out).toBeGreaterThan(lower);
+    expect(find(ls, /^M400 U1$/, end)).toBe(-1);
     expect(res.text).toMatch(/^M73 P100 R0$/m);
+  });
+
+  it('pauses at the end to remove the holder when endPause is on', () => {
+    const t = lines(GC.build([job([square(100, 100, 10)])], { ...X1C, endPause: true }, { date: DATE }).text);
+    const end = t.indexOf('; ===== End =====');
+    const pause = find(t, /^M400 U1$/, end);
+    expect(t.slice(end, pause).join('\n')).toMatch(/remove the pen holder/);
+    expect(find(t, /^G1 X152 Y250 F12000$/, pause)).toBeGreaterThan(pause);
   });
 
   it('passes the simulator', () => {
     const sim = SIM.check(res.text, GC.normalizeProfile(X1C), [job([square(100, 100, 10)])]);
     expect(sim.errors).toEqual([]);
-    expect(sim.pauses.map((p) => p.action)).toEqual(['attach', 'remove']);
+    expect(sim.pauses.map((p) => p.action)).toEqual(['attach']);
   });
 
   it('matches the golden file', async () => {
@@ -182,9 +190,9 @@ describe('build: other modes', () => {
     const jobs = [job([square(100, 100, 10)]), job([square(130, 100, 10)], { name: 'Layer 2' })];
     const withPause = GC.build(jobs, X1C, { date: DATE });
     const noPause = GC.build(jobs, { ...X1C, layerPause: false }, { date: DATE });
-    expect(withPause.text.match(/^M400 U1$/gm)).toHaveLength(3);
+    expect(withPause.text.match(/^M400 U1$/gm)).toHaveLength(2);
     expect(withPause.text).toMatch(/change to the pen for layer "Layer 2"/);
-    expect(noPause.text.match(/^M400 U1$/gm)).toHaveLength(2);
+    expect(noPause.text.match(/^M400 U1$/gm)).toHaveLength(1);
   });
 
   it('a dry run never lowers the pen below Z-Lift', () => {

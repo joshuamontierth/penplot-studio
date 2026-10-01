@@ -443,7 +443,8 @@
     R.simulatorCases = function () {
       S.reset();
       S.add([OBJ.create.shape('rect', { x: 120, y: 120, w: 40, h: 30 }), OBJ.create.shape('ellipse', { x: 150, y: 90, w: 20, h: 20 })], { history: false });
-      const P = GC.normalizeProfile(X1C);
+      // end pause on, so the end-pause mutations have something to break
+      const P = GC.normalizeProfile(Object.assign(clone(X1C), { endPause: true }));
       const plan = App.buildPlan({ profile: P, prefs: PREFS });
       const good = GC.build(plan.jobs, P, {}).text;
       const lines = good.split('\n');
@@ -566,7 +567,7 @@
           S.project.layers.forEach((L, i) => S.add(OBJ.create.shape('ellipse', { x: 80 + i * 40, y: 120, w: 30, h: 30, layerId: L.id }), { history: false, layerId: L.id }));
           const r = checkPipeline('out-of-range layer overrides', P, PREFS);
           ok(r.res.warnings.length >= 2, 'override clamping is reported', r.res.warnings.join(' | '));
-          ok(r.sim.pauses.length === 1 + 2 + 1, 'pauses: attach + 2 pen changes + removal', String(r.sim.pauses.map(p => p.action)));
+          ok(r.sim.pauses.length === 1 + 2 + (GC.normalizeProfile(P).endPause ? 1 : 0), 'pauses: attach + 2 pen changes (+ removal if the end pause is on)', String(r.sim.pauses.map(p => p.action)));
           ok(r.sim.stats.minDrawZ >= GC.minSafeDrawZ(GC.normalizeProfile(P)) - 1e-9, 'lowest pen-down Z stays in the safe window', String(r.sim.stats.minDrawZ));
         } },
         { name: 'no reordering / large join tolerance', run() {

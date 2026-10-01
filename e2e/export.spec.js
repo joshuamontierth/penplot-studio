@@ -30,10 +30,10 @@ test('Ctrl+E export passes the safety check and downloads simulator-clean G-code
   await expect(page.locator('.toast', { hasText: 'Saved Untitled_plot.gcode' })).toBeVisible();
 
   // replay the downloaded file: factory X1C profile, attach + remove pauses, strokes match the design
-  const sim = await simulate(page, file.text, { expectedPauses: 2 });
+  const sim = await simulate(page, file.text, { expectedPauses: 1 });
   expect(sim.errors).toEqual([]);
   expect(sim.ok).toBe(true);
-  expect(sim.pauses).toBe(2);
+  expect(sim.pauses).toBe(1); // attach (no end pause)
   const lifts = await page.evaluate(() => PP.App.buildPlan().stats.lifts);
   expect(sim.strokes).toBe(lifts);
   expect((await simulate(page, file.text, { jobs: true })).errors).toEqual([]);
@@ -44,7 +44,7 @@ test('Ctrl+E export passes the safety check and downloads simulator-clean G-code
   await expect(dlg.locator('.warn-item.ok')).toContainText('Safety check passed');
   const dry = await download(page, dlg.getByRole('button', { name: 'Download', exact: true }));
   expect(dry.name).toBe('Untitled_plot_DRYRUN.gcode');
-  const drySim = await simulate(page, dry.text, { dryRun: true, expectedPauses: 2 });
+  const drySim = await simulate(page, dry.text, { dryRun: true, expectedPauses: 1 });
   expect(drySim.errors).toEqual([]);
   expect(drySim.strokes).toBe(0);
 
@@ -72,7 +72,7 @@ test('two-layer design exports one file with a pen-change pause, or one file per
   expect(combined.text).toContain('; PAUSE: change to the pen');
   const sim = await simulate(page, combined.text, { jobs: true });
   expect(sim.errors).toEqual([]);
-  expect(sim.pauses).toBe(3); // attach, pen change, remove
+  expect(sim.pauses).toBe(2); // attach, pen change
 
   await dlg.locator('.seg-btn', { hasText: 'One file per layer' }).click();
   await expect(dlg.locator('.file-row')).toHaveCount(2);
@@ -83,7 +83,7 @@ test('two-layer design exports one file with a pen-change pause, or one file per
   ]);
   const second = await download(page, dlg.locator('.file-row').nth(1).getByRole('button', { name: 'Download' }));
   expect(second.name).toBe('Untitled_plot_2_Layer_2.gcode');
-  const one = await simulate(page, second.text, { expectedPauses: 2 });
+  const one = await simulate(page, second.text, { expectedPauses: 1 });
   expect(one.errors).toEqual([]);
   expect(one.strokes).toBeGreaterThan(0);
   expect(consoleProblems).toEqual([]);
@@ -128,7 +128,7 @@ test('preview plays the simulated G-code, scrubs, steps and exits', async ({ pag
 
   // the badge explains the check
   await badge.click();
-  await expect(page.locator('.toast', { hasText: 'Simulated the real G-code' })).toContainText('2 pauses');
+  await expect(page.locator('.toast', { hasText: 'Simulated the real G-code' })).toContainText('1 pause.');
 
   await bar.getByRole('button', { name: 'Exit preview' }).click();
   await expect(bar).not.toHaveClass(/\bshow\b/);

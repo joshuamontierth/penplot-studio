@@ -63,12 +63,6 @@ M73 P100 R0
 
 ; ===== End =====
 G1 Z80 F900 ; lower the bed away from the pen
-G1 X80 Y245 F12000 ; park toolhead
-M400
-; PAUSE: remove the pen holder now, then press RESUME to finish
-; PP_PAUSE remove
-M400 U1
-G90
 G1 X152 Y250 F12000 ; move toolhead out of the way
 M400
 M73 P100 R0
