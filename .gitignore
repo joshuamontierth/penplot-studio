@@ -30,3 +30,6 @@ desktop/dist/
 
 # scratch scripts agents run from the repo root
 *.tmp.mjs
+
+# your own Bambu .gcode.3mf samples (contain your printer settings): never committed
+experiments/3mf-samples/
