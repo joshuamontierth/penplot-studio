@@ -434,6 +434,19 @@
   ];
   App.TOOLS = TOOLS;
 
+  // Pen or knife: hatch fills are not cut, and cutting has no G-code yet (the Cut job dialog sums the job up)
+  S.events.on('change', (k) => {
+    if (k === 'mode' || k === 'load' || k === 'undo' || k === 'redo') {
+      PP.Objects.setOutlineOnly(S.project.mode === 'cut');
+      if (App.view) App.view.invalidate();
+    }
+  });
+  App.download = () => (S.project.mode === 'cut' ? PP.UI.openCutJob() : PP.UI.openExport());
+  App.preview = () => {
+    if (S.project.mode === 'cut' && !PP.Preview.active) { PP.UI.toast('The preview plays G-code, and cutting has none yet.', 'warn'); return; }
+    PP.Preview.toggle();
+  };
+
   App.setTool = function (id) {
     App.view.setTool(id);
     U.$$('.tool-btn').forEach(b => b.classList.toggle('on', b.dataset.tool === id));
@@ -462,6 +475,22 @@
     const paperB = h('button', { class: 'btn btn-menu', title: 'Paper size and position', onclick: () => UI.openPaper(paperB) }, UI.icon('paper', 15), paperLbl, UI.icon('chevron', 12));
     S.events.on('change', (k) => { if (k === 'paper' || k === 'load' || k === 'undo' || k === 'redo') paperLbl.textContent = UI.paperLabel(); });
 
+    // Pen or drag knife for the whole project (cutting: docs/cutting.md)
+    const modeSeg = UI.segmented({
+      options: [{ value: 'draw', label: 'Pen', icon: 'pen', showLabel: true, title: 'Draw with a pen' }, { value: 'cut', label: 'Cut', icon: 'knife', showLabel: true, title: 'Cut with a drag knife' }],
+      value: S.project.mode, onChange: (v) => S.setMode(v),
+    });
+    modeSeg.classList.add('mode-seg');
+    const downloadB = UI.btn('Download G-code', () => App.download(), { icon: 'download', primary: true, title: 'Generate G-code (Ctrl+E)' });
+    const syncMode = () => {
+      const cut = S.project.mode === 'cut';
+      modeSeg.setValue(S.project.mode);
+      downloadB.lastChild.textContent = cut ? 'Cut job' : 'Download G-code';
+      document.body.classList.toggle('cut-mode', cut);
+    };
+    S.events.on('change', (k) => { if (k === 'mode' || k === 'load' || k === 'undo' || k === 'redo') syncMode(); });
+    syncMode();
+
     const nameInput = h('input', { class: 'project-name', value: S.project.name, title: 'Project name', spellcheck: 'false' });
     nameInput.addEventListener('change', () => { S.project.name = nameInput.value.trim() || 'Untitled plot'; S.changed('name'); });
     nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); e.stopPropagation(); });
@@ -483,6 +512,7 @@
         UI.iconBtn('save', 'Save project (Ctrl+S)', () => App.files.saveProject()),
         h('span', { class: 'vsep' }), undoB, redoB),
       h('div', { class: 'hspacer' }),
+      modeSeg,
       h('div', { class: 'hgroup printer-group' }, UI.icon('printer', 15), profSel,
         UI.iconBtn('settings', 'Printer & plotter settings', () => UI.openPrinterSettings(), { size: 15 })),
       paperB,
@@ -490,8 +520,8 @@
       h('div', { class: 'hgroup' },
         UI.btn('Calibrate', () => UI.openCalibration(), { cls: 'btn-ghost', title: 'Calibration test files' }),
         UI.btn('Help', () => UI.openHelp(), { cls: 'btn-ghost', title: 'How to plot on your X1C / help' }),
-        UI.btn('Preview', () => PP.Preview.toggle(), { cls: 'btn-preview', title: 'Animated draw preview' }),
-        UI.btn('Download G-code', () => UI.openExport(), { icon: 'download', primary: true, title: 'Generate G-code (Ctrl+E)' })),
+        UI.btn('Preview', () => App.preview(), { cls: 'btn-preview', title: 'Animated draw preview' }),
+        downloadB),
     );
   }
 
@@ -713,7 +743,7 @@
     window.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       const k = e.key.toLowerCase();
-      const fn = k === 's' ? App.files.saveProject : k === 'o' ? App.files.openProject : k === 'e' ? PP.UI.openExport : null;
+      const fn = k === 's' ? App.files.saveProject : k === 'o' ? App.files.openProject : k === 'e' ? App.download : null;
       if (!fn) return;
       e.preventDefault(); // never the browser's own Save page / Open file
       if (PP.UI.hasModal()) return;

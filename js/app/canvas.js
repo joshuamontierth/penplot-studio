@@ -389,10 +389,11 @@
       const objs = S.project.objects;
       const layers = S.project.layers;
       ctx.globalAlpha = prev ? 0.14 : 1;
+      const cutting = S.project.mode === 'cut'; // knife lines are hairlines, whatever the pen width
       for (const L of layers) {
         if (!L.visible) continue;
         ctx.strokeStyle = L.color;
-        ctx.lineWidth = Math.max(L.penWidth || 0.5, 1.1 * px);
+        ctx.lineWidth = cutting ? 1.2 * px : Math.max(L.penWidth || 0.5, 1.1 * px);
         for (const o of objs) {
           if (o.layerId !== L.id) continue;
           ctx.stroke(OBJ.path2d(o));

@@ -90,6 +90,17 @@
           F('parkY', 'Park Y (nozzle)', 'mm', { step: 1 }),
           F('endX', 'End X (nozzle)', 'mm', { step: 1 }),
           F('endY', 'End Y (nozzle)', 'mm', { step: 1 }))]],
+      ['Cutting', () => [
+        CB('knifeSameAsPen', 'The knife sits where the pen does'),
+        h('div', { class: 'grid2' },
+          F('knifeOffsetX', 'Knife offset X (right +, left -)', 'mm', { step: 0.1, decimals: 2 }),
+          F('knifeOffsetY', 'Knife offset Y (back +, front -)', 'mm', { step: 0.1, decimals: 2 }),
+          F('bladeOffset', 'Blade offset', 'mm', { step: 0.05, decimals: 2, min: 0, max: 2 }),
+          F('zCut', 'Z-Cut (knife down)', 'mm', { step: 0.1, decimals: 2, min: 0.2 }),
+          F('cutSpeed', 'Cut speed', 'mm/s', { min: 1, max: 200 }),
+          F('overcut', 'Overcut', 'mm', { step: 0.1, decimals: 1, min: 0, max: 5 }),
+          F('swivelAngle', 'Swivel at corners sharper than', '°', { min: 0, max: 90 }),
+          F('cutPasses', 'Passes', '', { min: 1, max: 10 }))]],
       ['Custom G-code', () => [
         TXT('startGcode', 'Extra start G-code (inserted before homing)', '; e.g. M1002 gcode_claim_action : 0'),
         TXT('endGcode', 'Extra end G-code (inserted at the end)', '; e.g. M18'),
@@ -189,6 +200,53 @@
   // ---------------------------------------------------------------------------
   // G-code export
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Cut job (cutting mode): what the knife would cut. There is no cutting G-code yet (docs/cutting.md).
+  // ---------------------------------------------------------------------------
+  UI.openCutJob = function () {
+    const App = PP.App;
+    const plan = App.buildPlan();
+    const p = plan.profile;
+    if (!plan.jobs.length) { UI.toast(App.emptyPlanMessage(plan), 'warn'); return; }
+    let closed = 0, open = 0, len = 0, smallest = Infinity;
+    for (const j of plan.jobs) {
+      for (const poly of j.polys) {
+        const n = poly.length;
+        let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+        for (let k = 0; k < n; k += 2) {
+          if (k) len += Math.hypot(poly[k] - poly[k - 2], poly[k + 1] - poly[k - 1]);
+          mnx = Math.min(mnx, poly[k]); mxx = Math.max(mxx, poly[k]); mny = Math.min(mny, poly[k + 1]); mxy = Math.max(mxy, poly[k + 1]);
+        }
+        if (n >= 8 && Math.hypot(poly[0] - poly[n - 2], poly[1] - poly[n - 1]) < 0.05) {
+          closed++;
+          smallest = Math.min(smallest, Math.max(mxx - mnx, mxy - mny));
+        } else open++;
+      }
+    }
+    const passes = Math.max(1, Math.round(p.cutPasses || 1));
+    const fills = S.project.objects.filter(o => o.fill && o.fill.enabled).length;
+    const card = (label, value, sub) => h('div', { class: 'xcard' }, h('span', null, label), h('b', null, value), sub ? h('small', null, sub) : null);
+    const warn = (kind, text) => h('div', { class: 'warn-item ' + kind }, UI.icon(kind === 'ok' ? 'check' : 'warn', 14), h('span', null, text));
+    const notes = h('div', { class: 'warns' },
+      open ? warn('warn', open + ' open path' + (open === 1 ? '' : 's') + ': cut as a line, no piece comes free.') : null,
+      fills ? warn('warn', fills + ' hatch fill' + (fills === 1 ? ' is' : 's are') + ' left out: only outlines are cut.') : null,
+      smallest < 3 ? warn('warn', 'The smallest piece is ' + U.fmt(smallest, 1) + ' mm: small pieces are hard to cut and weed.') : null,
+      warn('warn', 'Put a cutting mat under the material: the knife will score the build plate.'),
+      warn('error', 'Cutting G-code is not generated yet.'));
+    const body = h('div', { class: 'export' },
+      h('div', { class: 'export-summary' },
+        card('Closed shapes', String(closed), 'pieces that come free'),
+        card('Open paths', String(open)),
+        card('Cut length', U.formatLength(len * passes), passes > 1 ? passes + ' passes' : '1 pass'),
+        card('Est. time', U.formatDuration(len * passes / p.cutSpeed + 45), 'at ' + p.cutSpeed + ' mm/s')),
+      h('div', { class: 'kv' },
+        kv('Knife offset', p.knifeSameAsPen ? 'same as the pen' : 'X' + p.knifeOffsetX + '  Y' + p.knifeOffsetY + ' mm'),
+        kv('Blade offset', p.bladeOffset + ' mm'), kv('Z-Cut', p.zCut + ' mm'), kv('Overcut', p.overcut + ' mm'),
+        kv('Swivel corners over', p.swivelAngle + '°')),
+      notes);
+    UI.modal({ title: 'Cut job', body, wide: true, footer: [h('span', { class: 'hspacer' }), UI.btn('Printer settings', () => UI.openPrinterSettings(), { icon: 'settings' })] });
+  };
+
   UI.openExport = function () {
     if (PP.Preview.active) PP.Preview.stop();
     const App = PP.App;

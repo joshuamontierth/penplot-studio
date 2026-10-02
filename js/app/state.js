@@ -38,6 +38,7 @@
       objects: [],
       activeLayerId: l.id,
       paper: { preset: 'letter', landscape: false, w: 215.9, h: 279.4, x: 0, y: 0, visible: true },
+      mode: 'draw', // 'draw' with a pen, or 'cut' with a drag knife
     };
   }
 
@@ -60,6 +61,7 @@
       objects: p.objects.slice(),
       activeLayerId: p.activeLayerId,
       paper: Object.assign({}, p.paper),
+      mode: p.mode,
       selection: S.selection.slice(),
     };
   }
@@ -71,6 +73,7 @@
     p.objects = snap.objects.slice();
     p.activeLayerId = snap.activeLayerId;
     p.paper = Object.assign({}, snap.paper);
+    p.mode = snap.mode;
     const ids = new Set(p.objects.map(o => o.id));
     S.selection = snap.selection.filter(id => ids.has(id));
   }
@@ -280,6 +283,15 @@
   // ---------------------------------------------------------------------------
   // Paper
   // ---------------------------------------------------------------------------
+  /** 'draw' (pen) or 'cut' (drag knife) for the whole project. */
+  S.setMode = function (mode) {
+    if (mode !== 'draw' && mode !== 'cut') return;
+    if (S.project.mode === mode) return;
+    S.checkpoint();
+    S.project.mode = mode;
+    changed('mode');
+  };
+
   S.setPaper = function (patch, opts = {}) {
     if (opts.history !== false) S.checkpoint();
     S.project.paper = Object.assign({}, S.project.paper, patch);
@@ -293,7 +305,7 @@
     const p = S.project;
     return {
       app: 'PenPlot Studio', format: 1, savedAt: new Date().toISOString(),
-      name: p.name, layers: p.layers, activeLayerId: p.activeLayerId, paper: p.paper,
+      name: p.name, layers: p.layers, activeLayerId: p.activeLayerId, paper: p.paper, mode: p.mode,
       objects: p.objects.map(o => {
         const c = {};
         for (const k in o) if (o[k] !== undefined) c[k] = o[k];
@@ -321,6 +333,7 @@
       }),
       activeLayerId: layerIds.has(data.activeLayerId) ? data.activeLayerId : layers[0].id,
       paper: Object.assign(base.paper, data.paper || {}),
+      mode: data.mode === 'cut' ? 'cut' : 'draw',
     };
     // drop objects whose geometry cannot be built (a hand-edited or corrupt file), so one bad object cannot break
     // rendering, planning and - through autosave - every later session

@@ -583,6 +583,9 @@ Record every answer. They settle the assumptions in §3.
     **Add files…** takes STLs or the downloaded ZIP (`U.unzip`), matches each file to a part by name, and refuses a
     cartridge or spring without a pen bore. Parts are kept in IndexedDB (`mount:<part>`, with
     `navigator.storage.persist()`). `*.stl` and `*.3mf` are git-ignored.
+26. Cutting (branch `cutting`, UI only so far): the Pen | Cut project mode, hatch fills left out in cut mode,
+    knife settings in a Cutting tab, and a Cut job summary instead of a download. The plan for the rest (knife-path
+    compensation, cut G-code, simulator knife mode, calibration, design-side changes) is in `docs/cutting.md`.
 
 ---
 

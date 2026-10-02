@@ -37,6 +37,10 @@
     margin: 1,
     zDraw: 14, zLift: 20, zAttach: 60, zEnd: 80, zMax: 250,
     drawSpeed: 30, travelSpeed: 200, zSpeed: 15, accel: 4000,
+    // Drag-knife cutting (docs/cutting.md). build() does not use these yet; the Cut job dialog reports with them.
+    knifeSameAsPen: true, knifeOffsetX: -28, knifeOffsetY: -35, // holder axis relative to the nozzle
+    bladeOffset: 0.25, // how far the blade tip trails the holder axis (about 0.25 mm for 45° Roland-type blades)
+    zCut: 14, cutSpeed: 20, overcut: 1, swivelAngle: 30, cutPasses: 1,
     penDownDelay: 50, penUpDelay: 0,
     home: true,
     safeStart: true,
@@ -81,14 +85,14 @@
     Object.assign({}, BAMBU_BASE, {
       id: 'bambu-a1', name: 'Bambu Lab A1', shortName: 'A1', holder: 'a1', builtin: true, mount: A1_MOUNT,
       nozzleMinX: 0, nozzleMaxX: 256, nozzleMinY: 0, nozzleMaxY: 256,
-      penOffsetX: 0, penOffsetY: -28,
+      penOffsetX: 0, penOffsetY: -28, knifeOffsetX: 0, knifeOffsetY: -28,
       safeStart: false, purgeChute: false,
       parkX: 128, parkY: 128, endX: 128, endY: 220,
     }),
     Object.assign({}, BAMBU_BASE, {
       id: 'custom', name: 'Custom Board (Marlin)', shortName: 'plotter', builtin: true, firmware: 'marlin',
       mount: 'Generic pen holder - measure and enter your own offsets',
-      penOffsetX: 0, penOffsetY: 0, zDraw: 2, zLift: 6, zAttach: 30, zEnd: 40,
+      penOffsetX: 0, penOffsetY: 0, knifeOffsetX: 0, knifeOffsetY: 0, zDraw: 2, zCut: 2, zLift: 6, zAttach: 30, zEnd: 40,
       pauseCommand: 'M0 Attach pen and click to resume', parkX: 110, parkY: 20, endX: 110, endY: 200,
       bedWidth: 220, bedDepth: 220, nozzleMinX: 0, nozzleMinY: 0, nozzleMaxX: 220, nozzleMaxY: 220, travelSpeed: 120, accel: 1500,
       safeStart: false, endPause: false, purgeChute: false,

@@ -15,6 +15,7 @@
     select: '<path d="M5 3l14 8-6 1.8L10 19z"/><path d="M13 13l5 6"/>',
     pan: '<path d="M8 13V5.5a1.5 1.5 0 013 0V12"/><path d="M11 11.5V4.5a1.5 1.5 0 013 0V12"/><path d="M14 11.5v-6a1.5 1.5 0 013 0V14"/><path d="M8 13l-1.6-1.7a1.6 1.6 0 00-2.4 2.1L8 19a5 5 0 004 2h1a5 5 0 005-5v-2"/>',
     pen: '<path d="M4 20l1-5L16.5 3.5a2.1 2.1 0 013 3L8 18z"/><path d="M14.5 5.5l3 3"/>',
+    knife: '<path d="M14 3l7 7-9 9-3-1-1-3z"/><path d="M8 15l-5 6"/><path d="M11 6l7 7"/>',
     line: '<path d="M5 19L19 5"/><circle cx="5" cy="19" r="1.6"/><circle cx="19" cy="5" r="1.6"/>',
     polyline: '<path d="M3 18l5-9 5 6 4-10 4 4"/>',
     curve: '<path d="M3 19C6 5 12 5 12 12s6 7 9-7"/>',
@@ -216,7 +217,7 @@
   function segmented({ options, value, onChange }) {
     const wrap = h('div', { class: 'seg' });
     const btns = options.map(o => {
-      const b = h('button', { class: 'seg-btn' + (o.value === value ? ' on' : ''), title: o.title || o.label, onclick: () => { set(o.value); onChange && onChange(o.value); } }, o.icon ? icon(o.icon, 16) : null, o.icon && !o.showLabel ? null : o.label);
+      const b = h('button', { class: 'seg-btn' + (o.value === value ? ' on' : ''), title: o.title || o.label, onclick: () => { set(o.value); onChange && onChange(o.value); } }, o.icon ? icon(o.icon, 16) : null, o.icon && !o.showLabel ? null : o.icon ? h('span', { class: 'seg-label' }, o.label) : o.label);
       b.dataset.value = o.value;
       return b;
     });
