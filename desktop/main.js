@@ -15,6 +15,7 @@ const ORIGIN = `${SCHEME}://${HOST}`;
 const APP_DIR = path.join(__dirname, 'app');
 const ICON = path.join(__dirname, 'build', 'icon.png');
 const PRELOAD = path.join(__dirname, 'preload.js');
+const drives = require('./drives');
 
 // Must run before the app is ready. standard + secure give the page a real, stable origin (IndexedDB,
 // localStorage, blob: downloads); supportFetchAPI + corsEnabled let fetch() read vendor/ fonts.
@@ -341,6 +342,9 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle(SCHEME, handleAppRequest);
     setupPermissions();
     ipcMain.handle('pp:save-files', saveFiles);
+    ipcMain.handle('pp:drives', (event) => (guard(event), drives.list()));
+    ipcMain.handle('pp:save-to-drive', (event, id, files) => (guard(event), drives.save(String(id), toItems(files))));
+    ipcMain.handle('pp:eject', (event, id) => (guard(event), drives.eject(String(id))));
     ipcMain.handle('pp:take-open-file', (event) => {
       guard(event);
       const f = pendingOpen;

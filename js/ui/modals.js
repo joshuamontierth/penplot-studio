@@ -225,6 +225,15 @@
     });
     const dryCb = UI.checkField({ label: 'Dry run - pen never touches the paper (moves at Z-Lift)', value: false, onChange: (v) => { dry = v; renderFiles(); } });
     const files = h('div', { class: 'file-list' });
+    const bar = UI.driveBar(); // desktop app only: SD card / USB drive
+    let driveBtns = [];
+    const syncDriveBtns = (d) => driveBtns.forEach(({ sdB, dlB, ok }) => {
+      sdB.hidden = !d;
+      if (d) sdB.lastChild.textContent = 'Save to ' + d.label;
+      sdB.classList.toggle('btn-primary', !!d && ok);
+      dlB.classList.toggle('btn-primary', !d && ok);
+    });
+    if (bar) bar.onChange(syncDriveBtns);
     const codeView = h('textarea', { class: 'code code-view', rows: 12, readonly: true, spellcheck: 'false' });
     let lastText = '';
 
@@ -234,6 +243,7 @@
     }
     function renderFiles() {
       U.clear(files);
+      driveBtns = [];
       const outputs = [];
       if (mode === 'combined' || plan.jobs.length === 1) {
         outputs.push({ name: baseName + (dry ? '_DRYRUN' : '') + '.gcode', jobs: plan.jobs.map(makeJob), label: plan.jobs.length > 1 ? 'All layers (' + plan.jobs.length + ' pens, pauses between)' : plan.jobs[0].name });
@@ -245,16 +255,22 @@
         o.res = res;
         const sim = PP.GSim.check(res.text, p, o.jobs, { dryRun: dry, keepMoves: false });
         if (i === 0) { lastText = res.text; codeView.value = res.text.split('\n').slice(0, 250).join('\n') + (res.stats.lines > 250 ? '\n; ... (' + (res.stats.lines - 250) + ' more lines)' : ''); }
+        const okToSave = async () =>
+          (sim.ok || await UI.confirm('Safety check failed', 'The simulator found ' + sim.errors.length + ' problem(s) in this file that could crash the printer or ruin the plot. Save anyway?', 'Save anyway', true)) &&
+          (!sim.ok || !errs.length || await UI.confirm('Printer settings have problems', errs.join(' ') + ' Save anyway?', 'Save anyway', true));
+        const file = { name: o.name, data: res.text, type: 'text/x-gcode' };
+        const dlB = UI.btn('Download', async () => {
+          if (!(await okToSave())) return;
+          let r;
+          try { r = await U.saveFiles([file]); } catch (e) { UI.toast('Could not save ' + o.name + ': ' + e.message, 'error'); return; }
+          if (r) UI.toast('Saved ' + o.name + U.savedTo(r) + ' - copy it to the root of the printer SD card.', 'info', 5000);
+        }, { primary: sim.ok, small: true, icon: 'download' });
+        const sdB = bar ? UI.btn('Save to drive', async () => { if (await okToSave()) await bar.save([file]); }, { small: true, icon: 'sd' }) : null;
+        if (sdB) driveBtns.push({ sdB, dlB, ok: sim.ok });
         const row = h('div', { class: 'file-row' + (sim.ok ? '' : ' bad') },
           h('span', { class: 'dot', style: { background: o.color || (o.jobs[0] && o.jobs[0].color) || '#999' } }),
           h('div', { class: 'grow' }, h('b', null, o.name), h('small', null, o.label + ' • ' + res.stats.lines.toLocaleString() + ' lines • ' + U.formatDuration(res.stats.time) + ' • ' + Math.round(res.text.length / 1024) + ' KB')),
-          UI.btn('Download', async () => {
-            if (!sim.ok && !(await UI.confirm('Safety check failed', 'The simulator found ' + sim.errors.length + ' problem(s) in this file that could crash the printer or ruin the plot. Download anyway?', 'Download anyway', true))) return;
-            if (sim.ok && errs.length && !(await UI.confirm('Printer settings have problems', errs.join(' ') + ' Download anyway?', 'Download anyway', true))) return;
-            let r;
-            try { r = await U.saveFiles([{ name: o.name, data: res.text, type: 'text/x-gcode' }]); } catch (e) { UI.toast('Could not save ' + o.name + ': ' + e.message, 'error'); return; }
-            if (r) UI.toast('Saved ' + o.name + U.savedTo(r) + ' - copy it to the root of the printer SD card.', 'info', 5000);
-          }, { primary: sim.ok, small: true, icon: 'download' }),
+          sdB, dlB,
           h('button', { class: 'btn btn-sm', onclick: () => { codeView.value = res.text.split('\n').slice(0, 400).join('\n'); lastText = res.text; } }, 'View'));
         files.appendChild(row);
         files.appendChild(h('div', { class: 'warn-item ' + (sim.ok ? 'ok' : 'error') }, UI.icon(sim.ok ? 'check' : 'warn', 14),
@@ -262,6 +278,7 @@
         sim.warnings.slice(0, 4).forEach(w => files.appendChild(h('div', { class: 'warn-item warn' }, UI.icon('warn', 14), h('span', null, PP.GSim.fmtMsg(w)))));
         res.warnings.forEach(w => files.appendChild(h('div', { class: 'warn-item warn' }, UI.icon('warn', 14), h('span', null, w))));
       });
+      syncDriveBtns(bar ? bar.drive() : null);
     }
 
     const x1c = p.firmware === 'bambu';
@@ -286,14 +303,14 @@
           h('h3', null, 'Plotter settings'), settingsTbl,
           h('div', { class: 'field' }, h('label', null, 'Output'), plan.jobs.length > 1 ? modeSeg : h('div', { class: 'hint' }, 'Single layer - one file.')),
           dryCb, warnBox,
-          h('h3', null, 'Files'), files),
+          h('h3', null, 'Files'), bar ? bar.el : null, files),
         instructions),
       h('details', { class: 'code-details' }, h('summary', null, 'View G-code'), codeView,
         h('div', { class: 'row gap' }, UI.btn('Copy to clipboard', async () => {
           try { await navigator.clipboard.writeText(lastText); UI.toast('G-code copied', 'info'); } catch (e) { UI.toast('Clipboard not available', 'warn'); }
         }, { small: true, icon: 'copy' }))));
 
-    UI.modal({ title: 'Download G-code', body, wide: true, footer: [h('span', { class: 'hint' }, 'Generated for ' + p.name), h('span', { class: 'hspacer' }), UI.btn('Printer settings', () => UI.openPrinterSettings(), { icon: 'settings' })] });
+    UI.modal({ title: 'Download G-code', body, wide: true, onClose: () => bar && bar.stop(), footer: [h('span', { class: 'hint' }, 'Generated for ' + p.name), h('span', { class: 'hspacer' }), UI.btn('Printer settings', () => UI.openPrinterSettings(), { icon: 'settings' })] });
     renderFiles();
   };
 
@@ -392,7 +409,8 @@
       }
     }
 
-    const download = async () => {
+    const calBar = UI.driveBar(); // desktop app only
+    const download = async (toDrive) => {
       if (!result) return;
       let text, sim, secs;
       if (cur === 'offset') {
@@ -404,17 +422,27 @@
         text = res.text; secs = res.stats.time;
         sim = PP.GSim.check(text, p, result.jobs, { dryRun: dryCb.input.checked, keepMoves: false });
       }
-      if (!sim.ok && !(await UI.confirm('Safety check failed', 'The simulator found problems: ' + sim.errors.map(PP.GSim.fmtMsg).join(' | ') + '. Download anyway?', 'Download anyway', true))) return;
+      if (!sim.ok && !(await UI.confirm('Safety check failed', 'The simulator found problems: ' + sim.errors.map(PP.GSim.fmtMsg).join(' | ') + '. Save anyway?', 'Save anyway', true))) return;
       const name = 'calibration_' + cur + (dryCb.input.checked && cur !== 'offset' ? '_DRYRUN' : '') + '.gcode';
+      if (toDrive === true) { await calBar.save([{ name, data: text }]); return; }
       let r;
       try { r = await U.saveFiles([{ name, data: text, type: 'text/x-gcode' }]); } catch (e) { UI.toast('Could not save ' + name + ': ' + e.message, 'error'); return; }
       if (r) UI.toast('Saved ' + name + U.savedTo(r) + ' (' + U.formatDuration(secs) + ') - safety check ' + (sim.ok ? 'passed' : 'FAILED'), sim.ok ? 'info' : 'warn');
     };
 
+    const calDl = UI.btn('Download calibration G-code', () => download(false), { primary: true, icon: 'download' });
+    const calSd = UI.btn('Save to drive', () => download(true), { icon: 'sd' });
+    calSd.hidden = true;
+    if (calBar) calBar.onChange((d) => {
+      calSd.hidden = !d;
+      if (d) calSd.lastChild.textContent = 'Save to ' + d.label;
+      calSd.classList.toggle('btn-primary', !!d);
+      calDl.classList.toggle('btn-primary', !d);
+    });
     const body = h('div', { class: 'calib' },
       h('div', { class: 'calib-left' }, typeSeg, opts, speedField, dryCb, err, h('h3', null, 'How to read it'), legend),
       h('div', { class: 'calib-right' }, canvas, h('p', { class: 'hint' }, 'Preview on the bed; the gray dot is the nozzle for the offset finder. Run the file like any plot: attach the holder at the first pause.')));
-    UI.modal({ title: 'Calibration', body, wide: true, footer: [UI.btn('Calibration guide', () => UI.openHelp('calibration'), { icon: 'help' }), h('span', { class: 'hspacer' }), UI.btn('Download calibration G-code', download, { primary: true, icon: 'download' })] });
+    UI.modal({ title: 'Calibration', body, wide: true, footer: [UI.btn('Calibration guide', () => UI.openHelp('calibration'), { icon: 'help' }), h('span', { class: 'hspacer' }), calBar ? calBar.el : null, calSd, calDl], onClose: () => calBar && calBar.stop() });
     refresh();
   };
 

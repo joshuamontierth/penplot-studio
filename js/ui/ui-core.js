@@ -37,6 +37,8 @@
     stepb: '<path d="M19 20L9 12l10-8z"/><path d="M5 19V5"/>',
     download: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>',
     external: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>',
+    sd: '<path d="M9 3h8a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V7z"/><path d="M10 7v3M13 7v3M16 7v3"/>',
+    eject: '<path d="M12 5l7 8H5z"/><path d="M5 18h14"/>',
     upload: '<path d="M12 21V9"/><path d="M7 14l5-5 5 5"/><path d="M5 3h14"/>',
     target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',

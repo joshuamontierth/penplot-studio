@@ -583,6 +583,15 @@ Record every answer. They settle the assumptions in §3.
     **Add files…** takes STLs or the downloaded ZIP (`U.unzip`), matches each file to a part by name, and refuses a
     cartridge or spring without a pen bore. Parts are kept in IndexedDB (`mount:<part>`, with
     `navigator.storage.persist()`). `*.stl` and `*.3mf` are git-ignored.
+25. Save to removable drive, desktop only (`desktop/drives.js`, `js/ui/drives.js`). The page polls the list every
+    3 s while the export or calibration dialog is open.
+    - Linux: `lsblk -J`, removable or hotplug volumes mounted under `/media` or `/run/media`. Eject is `udisksctl`
+      unmount plus power-off, or `gio mount -e` without udisks2.
+    - Windows: CIM `Win32_LogicalDisk` DriveType 2 with media. Eject is DeviceIoControl lock, dismount and eject,
+      like Cura; "busy" means a file is open.
+    - Writes go to the drive root and are fsynced. A save only targets a drive that is in the current listing.
+    - Not yet tried with a real card on Windows. The parsers have unit tests, the UI has an e2e test with a stubbed
+      bridge, and the smoke test runs a real listing.
 
 ---
 

@@ -138,6 +138,15 @@ try {
     JSON.stringify(saved),
   );
 
+  // removable drives: the OS listing runs (lsblk / PowerShell); usually nothing is plugged in
+  const drives = await page.evaluate(() =>
+    window.ppDesktop.drives().then(
+      (l) => ({ ok: Array.isArray(l), n: l.length }),
+      (e) => ({ err: e.message }),
+    ),
+  );
+  check('removable drive detection runs', drives.ok, JSON.stringify(drives));
+
   // a project for the "open from the file manager" launch below
   const project = await page.evaluate(() => ({ ...PP.Store.serialize(), name: 'Smoke project' }));
   writeFileSync(join(SAVE_DIR, 'smoke.penplot'), gzipSync(JSON.stringify(project)));
