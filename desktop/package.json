@@ -60,7 +60,16 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "artifactName": "PenPlot-Studio-Setup-${version}-win-${arch}.${ext}"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "penplot",
+        "name": "PenPlot project",
+        "description": "PenPlot Studio project",
+        "mimeType": "application/x-penplot",
+        "role": "Editor"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "44.5.1",

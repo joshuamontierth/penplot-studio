@@ -64,6 +64,9 @@ on Windows. Each OS has to build its own: the **Desktop app** workflow does that
 GitHub Release. Builds are unsigned (SmartScreen warns). On Ubuntu 24.04+ the AppImage and `desktop:start` drop to
 `--no-sandbox` automatically; run the `.tar.gz` build with `--no-sandbox` yourself.
 
+Projects are `.penplot` files (the project JSON, gzipped). The Windows installer registers the extension, so
+double-clicking a `.penplot` opens it in the desktop app. Older `.penplot.json` files still open.
+
 ## Features
 
 | Area | What you get |

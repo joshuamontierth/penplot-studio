@@ -9,11 +9,12 @@
  */
 /* global window, PP */ // page.evaluate() callbacks run inside the app's page
 import { _electron as electron } from '@playwright/test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DESKTOP = join(ROOT, 'desktop');
@@ -134,6 +135,10 @@ try {
     JSON.stringify(saved),
   );
 
+  // a project for the "open from the file manager" launch below
+  const project = await page.evaluate(() => ({ ...PP.Store.serialize(), name: 'Smoke project' }));
+  writeFileSync(join(SAVE_DIR, 'smoke.penplot'), gzipSync(JSON.stringify(project)));
+
   const isolated = await page.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined');
   check('renderer has no Node access', isolated);
 
@@ -141,6 +146,28 @@ try {
   check('no console errors or page errors', problems.length === 0, problems.slice(0, 3).join(' | '));
 } finally {
   await app.close();
+}
+
+// Double-clicking a .penplot starts the app with the file on the command line
+const opts = launchOptions();
+const second = await electron.launch({
+  ...opts,
+  args: [...opts.args, join(SAVE_DIR, 'smoke.penplot')],
+  timeout: 60_000,
+});
+try {
+  const page = await second.firstWindow();
+  const name = await page
+    .waitForFunction(() => window.PP && PP.Store && PP.Store.project.name === 'Smoke project', null, {
+      timeout: 30_000,
+    })
+    .then(
+      () => 'Smoke project',
+      (e) => String(e.message).split('\n')[0],
+    );
+  check('a .penplot on the command line opens', name === 'Smoke project', name);
+} finally {
+  await second.close();
   rmSync(SAVE_DIR, { recursive: true, force: true });
 }
 

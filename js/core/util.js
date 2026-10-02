@@ -4,6 +4,23 @@
 
   let idCounter = 0;
 
+  /** Bytes through a TransformStream (gzip / gunzip) -> Uint8Array. */
+  async function pipeBytes(bytes, transform) {
+    const reader = new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } }).pipeThrough(transform).getReader();
+    const chunks = [];
+    let n = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      n += value.length;
+    }
+    const out = new Uint8Array(n);
+    let o = 0;
+    for (const c of chunks) { out.set(c, o); o += c.length; }
+    return out;
+  }
+
   const U = {
     uid(prefix = 'id') {
       idCounter = (idCounter + 1) % 1e9;
@@ -130,6 +147,17 @@
         U.downloadBlob(f.name, new Blob([f.data], { type }));
       }
       return { count: files.length, where: null };
+    },
+
+    /** gzip a string (CompressionStream) -> Uint8Array. Used for .penplot project files. */
+    gzip(text) {
+      return pipeBytes(new TextEncoder().encode(text), new CompressionStream('gzip'));
+    },
+    /** Text of gzip bytes; plain (not gzip) bytes are read as UTF-8 text as they are. */
+    async gunzipText(buffer) {
+      const bytes = new Uint8Array(buffer);
+      const gz = bytes[0] === 0x1f && bytes[1] === 0x8b;
+      return new TextDecoder().decode(gz ? await pipeBytes(bytes, new DecompressionStream('gzip')) : bytes);
     },
 
     /** " to <folder>" when the desktop app reported where saveFiles put the files, else "". */

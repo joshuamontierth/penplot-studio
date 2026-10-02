@@ -573,6 +573,10 @@ Record every answer. They settle the assumptions in §3.
     bundled cartridge and spring are resized for the pen, and the X1/P1 or A1 attachment is saved unchanged; tick
     which parts to save. No file picking. Printer settings lost every description paragraph and tooltip, by the
     owner's request (the tabs stay).
+23. Project files are `.penplot`: the project JSON, gzipped (`U.gzip` / `U.gunzipText`; opening sniffs the gzip
+    magic, so plain `.penplot.json` / `.json` still open). The desktop app registers `.penplot` (electron-builder
+    `fileAssociations`; the NSIS installer does it on Windows). A file on the command line, or in a second
+    instance's command line, is handed to the page (`pp:take-open-file`, `pp:open-file`).
 
 ---
 

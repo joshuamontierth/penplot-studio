@@ -329,20 +329,21 @@
       }
       S.reset();
     },
+    // .penplot = the project JSON, gzipped (opening also takes the older plain .penplot.json / .json)
     async saveProject() {
-      const name = U.safeFilename(S.project.name, 'plot') + '.penplot.json';
+      const name = U.safeFilename(S.project.name, 'plot') + '.penplot';
       try {
-        const r = await U.saveFiles([{ name, data: JSON.stringify(S.serialize()), type: 'application/json' }]);
+        const r = await U.saveFiles([{ name, data: (await U.gzip(JSON.stringify(S.serialize()))).buffer, type: 'application/octet-stream' }]);
         if (!r) return;
         S.dirty = false;
         PP.UI.toast('Project saved' + (U.savedTo(r) || ' to your downloads folder'), 'info');
       } catch (e) { PP.UI.toast('Could not save the project: ' + e.message, 'error'); }
     },
     async openProject(file) {
-      file = file || await U.pickFile('.json,.penplot,application/json');
+      file = file || await U.pickFile('.penplot,.json,application/json');
       if (!file) return;
       try {
-        const data = JSON.parse(await U.readFile(file, 'text'));
+        const data = JSON.parse(await U.gunzipText(await U.readFile(file, 'arraybuffer')));
         const { dropped } = S.load(data);
         App.view.fit();
         PP.UI.toast('Opened "' + (S.project.name || file.name) + '"' + (dropped ? ' - skipped ' + dropped + ' damaged object(s)' : ''), dropped ? 'warn' : 'info');
@@ -752,6 +753,13 @@
     if (!PP.Storage.getLocal('seenHelp', false)) {
       PP.Storage.setLocal('seenHelp', true);
       setTimeout(() => PP.UI.openHelp(), 400);
+    }
+    // desktop app: a .penplot double-clicked in the file manager (at launch, or while the app is open)
+    const desk = window.ppDesktop;
+    if (desk && desk.takeOpenFile) {
+      const open = (f) => { if (f) App.files.openProject(new File([f.data], f.name)); };
+      desk.onOpenFile(open);
+      desk.takeOpenFile().then(open, (e) => PP.UI.toast('Could not open the file: ' + e.message, 'error'));
     }
   };
 

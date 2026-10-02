@@ -125,17 +125,26 @@ function safeName(name) {
   return base.slice(0, 200) || 'file';
 }
 
-async function saveFiles(event, files, opts) {
-  if (!isAppUrl(event.senderFrame && event.senderFrame.url))
-    throw new Error('Saving is only allowed for the app page.');
-  if (!Array.isArray(files) || !files.length) return { canceled: true };
+/** Only the app's own page may use the bridge. */
+function guard(event) {
+  if (!isAppUrl(event.senderFrame && event.senderFrame.url)) throw new Error('Only the app page may do this.');
+}
+
+/** The page's [{ name, data }] as safe, unique file names with Buffers or strings. */
+function toItems(files) {
   const used = new Set();
-  const items = files.map((f) => {
+  return (Array.isArray(files) ? files : []).map((f) => {
     let name = safeName(f && f.name);
     for (let n = 2; used.has(name.toLowerCase()); n++) name = safeName(f.name).replace(/(\.[^.]*)?$/, ` (${n})$1`);
     used.add(name.toLowerCase());
     return { name, data: typeof f.data === 'string' ? f.data : Buffer.from(f.data) };
   });
+}
+
+async function saveFiles(event, files, opts) {
+  guard(event);
+  const items = toItems(files);
+  if (!items.length) return { canceled: true };
   const win = BrowserWindow.fromWebContents(event.sender);
   const title = opts && typeof opts.title === 'string' ? opts.title : '';
   const startDir = lastSaveDir || app.getPath('downloads');
@@ -205,6 +214,25 @@ async function saveFiles(event, files, opts) {
   }
   lastSaveDir = dir;
   return { saved, dir };
+}
+
+// A project opened from the file manager (double-click on a .penplot): the path arrives on the command line, or in
+// a second instance's command line. The page asks for the first one once it is ready (pp:take-open-file) and is
+// sent later ones (pp:open-file).
+const OPENABLE = /\.(penplot|json)$/i;
+const fileArg = (argv, cwd) => {
+  const a = argv
+    .slice(1)
+    .reverse()
+    .find((x) => OPENABLE.test(x) && !x.startsWith('-'));
+  return a ? path.resolve(cwd || process.cwd(), a) : null;
+};
+let pendingOpen = fileArg(process.argv);
+
+async function readOpenFile(file) {
+  const st = await fs.stat(file);
+  if (!st.isFile() || st.size > 64 << 20) throw new Error('Not a project file: ' + file);
+  return { name: path.basename(file), data: await fs.readFile(file) };
 }
 
 // Links to the outside world open in the system browser; the window never leaves app://penplot/.
@@ -298,8 +326,13 @@ if (!app.requestSingleInstanceLock()) {
   app.enableSandbox();
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv, cwd) => {
     if (!mainWindow) return;
+    const f = fileArg(argv, cwd);
+    if (f)
+      readOpenFile(f)
+        .then((file) => mainWindow && mainWindow.webContents.send('pp:open-file', file))
+        .catch((e) => console.error('PenPlot Studio: ' + e.message));
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   });
@@ -308,6 +341,12 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle(SCHEME, handleAppRequest);
     setupPermissions();
     ipcMain.handle('pp:save-files', saveFiles);
+    ipcMain.handle('pp:take-open-file', (event) => {
+      guard(event);
+      const f = pendingOpen;
+      pendingOpen = null;
+      return f ? readOpenFile(f) : null;
+    });
     // anything still downloaded the browser way gets a readable Save dialog
     session.defaultSession.on('will-download', (_e, item) => {
       const name = safeName(item.getFilename());
