@@ -1,5 +1,5 @@
-// Pen holder dialog: open synthetic cartridge/spring STLs through the real file pickers, resize live for a
-// measured pen, refuse a pen that is too big, and download both STLs.
+// Pen holder dialog: open synthetic cartridge/spring STLs and an attachment through the real file pickers, resize
+// live for a measured pen, refuse a pen that is too big, and download all three STLs.
 import { test, expect } from './fixtures.js';
 import { dialog, openApp } from './helpers.js';
 
@@ -51,6 +51,10 @@ test('resizes the pen bore of both parts live and downloads them', async ({ page
   await expect(dlg.locator('.ph-slot').nth(0)).toContainText(/bore 10\.\d\d mm along Z/);
   await choose(1, 'Spring.stl', parts.spring);
   await expect(dlg.locator('.ph-slot').nth(1)).toContainText(/bore 11\.\d\d mm along Y/);
+  // the X1C's attachment is saved unchanged with the resized parts
+  await expect(dlg.locator('.ph-slot').nth(2)).toContainText('X1/P1 attachment');
+  await choose(2, 'X1P1 Attachment.stl', parts.cartridge);
+  await expect(dlg.locator('.ph-slot').nth(2)).toContainText(/X1P1 Attachment\.stl: [\d,]+ triangles/);
 
   const pen = dlg.locator('.field', { hasText: 'Measured pen diameter' }).locator('input');
   await pen.fill('8');
@@ -70,6 +74,8 @@ test('resizes the pen bore of both parts live and downloads them', async ({ page
   const names = [];
   page.on('download', (d) => names.push(d.suggestedFilename()));
   await dlg.getByRole('button', { name: 'Download STLs' }).click();
-  await expect.poll(() => names.sort()).toEqual(['Cartridge - 8 mm pen.stl', 'Spring - 8 mm pen.stl']);
+  await expect
+    .poll(() => names.sort())
+    .toEqual(['Cartridge - 8 mm pen.stl', 'Spring - 8 mm pen.stl', 'X1P1 Attachment.stl']);
   expect(consoleProblems).toEqual([]);
 });

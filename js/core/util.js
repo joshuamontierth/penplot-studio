@@ -113,6 +113,30 @@
       U.downloadBlob(filename, new Blob([text], { type: mime + ';charset=utf-8' }));
     },
 
+    /**
+     * Save files the user asked for. Desktop app: one native Save dialog, or one folder dialog for several files;
+     * resolves with { count, where } once they are written, or null if the user canceled. Browser: plain
+     * downloads, resolves at once with where = null (the browser decides where they go).
+     * files: [{ name, data: string | ArrayBuffer | Uint8Array, type }]
+     */
+    async saveFiles(files, opts = {}) {
+      const desk = window.ppDesktop;
+      if (desk && desk.saveFiles) {
+        const r = await desk.saveFiles(files.map(f => ({ name: f.name, data: f.data })), { title: opts.title });
+        return r && !r.canceled && r.saved && r.saved.length ? { count: r.saved.length, where: r.dir } : null;
+      }
+      for (const f of files) {
+        const type = (f.type || 'application/octet-stream') + (typeof f.data === 'string' ? ';charset=utf-8' : '');
+        U.downloadBlob(f.name, new Blob([f.data], { type }));
+      }
+      return { count: files.length, where: null };
+    },
+
+    /** " to <folder>" when the desktop app reported where saveFiles put the files, else "". */
+    savedTo(r) {
+      return r && r.where ? ' to ' + r.where : '';
+    },
+
     readFile(file, as = 'text') {
       return new Promise((resolve, reject) => {
         const r = new FileReader();

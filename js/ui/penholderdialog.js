@@ -1,6 +1,7 @@
 /*
  * PenPlot Studio - "Pen holder" dialog: resize the pen bore of your holder's cartridge and spring STLs for a
- * measured pen, live, up to what the parts allow (see js/core/penholder.js).
+ * measured pen, live, up to what the parts allow (see js/core/penholder.js), and save them together with the
+ * attachment for the active printer (used as is).
  * The STLs are the user's own files (the mount designer's license); they are remembered in this browser only.
  */
 (function (PP) {
@@ -13,6 +14,8 @@
     { id: 'cartridge', label: 'Pen cartridge', hint: 'the tube that holds the pen' },
     { id: 'spring', label: 'Spring', hint: 'its rings the pen passes through' },
   ];
+  // the attachment the cartridge clips into differs per printer family (profile.holder); it is saved unchanged
+  const HOLDERS = { x1p1: 'X1/P1 attachment', a1: 'A1 attachment' };
 
   UI.openPenHolder = async function () {
     const st = Object.assign({ pen: 8, fit: 0.4, springGap: null }, PP.Storage.getLocal('penholder', {}));
@@ -21,6 +24,9 @@
     const result = h('div', { class: 'ph-result' });
     const canvas = h('canvas', { class: 'ph-canvas', width: 560, height: 260 });
     let api = null, outs = {};
+    const kind = PP.App.profile().holder || '';
+    const holderKey = 'penholder:holder:' + (kind || 'other');
+    let holder = null; // { name, buffer }
 
     const slotEls = {};
     const slots = ROLES.map(r => {
@@ -29,6 +35,24 @@
       slotEls[r.id] = info;
       return h('div', { class: 'ph-slot' }, h('div', null, h('b', null, r.label), h('div', { class: 'hint' }, r.hint)), info, btn);
     });
+    const holderInfo = h('div', { class: 'hint' }, 'No file yet');
+    slots.push(h('div', { class: 'ph-slot' },
+      h('div', null, h('b', null, HOLDERS[kind] || 'Printer attachment'), h('div', { class: 'hint' }, 'clips onto the toolhead - saved as is')),
+      holderInfo,
+      UI.btn('Choose STL…', async () => { const f = await U.pickFile('.stl,model/stl'); if (f) setHolder(f.name, await f.arrayBuffer(), true); }, { small: true, icon: 'open' })));
+
+    function setHolder(name, buffer, remember) {
+      try {
+        const n = PP.STL.parse(buffer).count;
+        if (!n) throw new Error('no triangles in this file');
+        holder = { name, buffer };
+        holderInfo.textContent = name + ': ' + n.toLocaleString() + ' triangles';
+        if (remember) PP.Storage.set(holderKey, { name, buffer }).catch(() => {});
+      } catch (e) {
+        holder = null;
+        holderInfo.textContent = name + ': ' + e.message;
+      }
+    }
 
     const save = () => PP.Storage.setLocal('penholder', { pen: st.pen, fit: st.fit, springGap: st.springGap });
     const penF = UI.numberField({ label: 'Measured pen diameter', unit: 'mm', value: st.pen, min: 2, max: 30, step: 0.05, decimals: 2, title: 'Use calipers. For hexagonal pens measure across the corners.', onChange: (v) => { st.pen = v; save(); regen(); } });
@@ -112,19 +136,23 @@
       });
     }
 
-    const download = () => {
-      const names = Object.keys(outs);
-      if (!names.length) { UI.toast('Nothing to download yet.', 'warn'); return; }
-      for (const role of names) {
-        const base = parts[role].name.replace(/\.stl$/i, '');
-        const file = base + ' - ' + U.fmt(st.pen, 2) + ' mm pen.stl';
-        U.downloadBlob(file, new Blob([PP.STL.write(outs[role].tris, 'PenPlot Studio pen holder ' + st.pen + ' mm')], { type: 'model/stl' }));
-      }
-      UI.toast('Saved ' + names.length + ' STL file(s) for a ' + U.fmt(st.pen, 2) + ' mm pen.', 'info');
+    const download = async () => {
+      const pen = U.fmt(st.pen, 2);
+      const files = Object.keys(outs).map(role => ({
+        name: parts[role].name.replace(/\.stl$/i, '') + ' - ' + pen + ' mm pen.stl',
+        data: PP.STL.write(outs[role].tris, 'PenPlot Studio pen holder ' + st.pen + ' mm'),
+        type: 'model/stl',
+      }));
+      if (!files.length) { UI.toast('Nothing to download yet.', 'warn'); return; }
+      if (holder) files.push({ name: holder.name, data: holder.buffer, type: 'model/stl' });
+      try {
+        const r = await U.saveFiles(files, { title: files.length > 1 ? 'Choose a folder for the pen holder STLs' : undefined });
+        if (r) UI.toast('Saved ' + r.count + ' STL file' + (r.count === 1 ? '' : 's') + U.savedTo(r) + ' for a ' + pen + ' mm pen.', 'info', 5000);
+      } catch (e) { UI.toast('Could not save the STLs: ' + e.message, 'error'); }
     };
 
     const body = h('div', { class: 'ph' },
-      h('p', { class: 'hint' }, 'Changes only the pen tube of your own holder parts - everything else stays as designed. Open the STLs once; they are remembered in this browser.'),
+      h('p', { class: 'hint' }, 'Changes only the pen tube of your own cartridge and spring - everything else stays as designed. Choose the STLs once; they are remembered.'),
       h('div', { class: 'ph-slots' }, slots),
       h('div', { class: 'grid2' }, penF, fitF, gapF),
       result, status, canvas);
@@ -137,6 +165,7 @@
     for (const r of ROLES) {
       try { const saved = await PP.Storage.get('penholder:' + r.id); if (saved && saved.buffer) await setPart(r.id, saved.name, saved.buffer, false); } catch (e) { /* nothing remembered */ }
     }
+    try { const saved = await PP.Storage.get(holderKey); if (saved && saved.buffer) setHolder(saved.name, saved.buffer, false); } catch (e) { /* nothing remembered */ }
     regen();
   };
 })(window.PP = window.PP || {});

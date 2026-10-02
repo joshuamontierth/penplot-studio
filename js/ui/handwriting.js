@@ -161,7 +161,7 @@
         h('p', { class: 'hint' }, 'Write the character between the baseline and cap line. Lowercase letters sit on the baseline and reach the x-height; g, j, p, q, y dip to the descender.')),
       h('div', { class: 'hw-bottom' }, h('label', null, 'Preview'), prevText, prevCanvas, spaceF));
 
-    const exportHW = () => { commit(); U.downloadText('my-handwriting.json', JSON.stringify(data), 'application/json'); };
+    const exportHW = () => { commit(); U.saveFiles([{ name: 'my-handwriting.json', data: JSON.stringify(data), type: 'application/json' }]).catch((e) => UI.toast('Could not save: ' + e.message, 'error')); };
     const importHW = async () => {
       const f = await U.pickFile('.json,application/json');
       if (!f) return;

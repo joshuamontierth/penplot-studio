@@ -9,8 +9,9 @@
  */
 /* global window, PP */ // page.evaluate() callbacks run inside the app's page
 import { _electron as electron } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,7 +42,12 @@ const check = (name, ok, detail = '') => {
   console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail ? ' - ' + detail : ''));
 };
 
-const app = await electron.launch({ ...launchOptions(), timeout: 60_000 });
+const SAVE_DIR = mkdtempSync(join(tmpdir(), 'penplot-smoke-'));
+const app = await electron.launch({
+  ...launchOptions(),
+  env: { ...process.env, PP_TEST_SAVE_DIR: SAVE_DIR },
+  timeout: 60_000,
+});
 try {
   const page = await app.firstWindow();
   const problems = [];
@@ -116,6 +122,20 @@ try {
   }
   check('pen-holder tool opens from Printer settings', /Choose your cartridge/.test(holder), holder);
 
+  // saving goes through the desktop bridge (one dialog, not one per file); PP_TEST_SAVE_DIR skips the dialog
+  const saved = await page.evaluate(() =>
+    globalThis.PP.U.saveFiles([
+      { name: 'a.gcode', data: 'G90\n' },
+      { name: 'b.stl', data: new Uint8Array([1, 2, 3]).buffer },
+    ]),
+  );
+  const wrote = (n) => (existsSync(join(SAVE_DIR, n)) ? readFileSync(join(SAVE_DIR, n)).length : -1);
+  check(
+    'files save through the desktop bridge',
+    saved && saved.count === 2 && wrote('a.gcode') === 4 && wrote('b.stl') === 3,
+    JSON.stringify(saved),
+  );
+
   const isolated = await page.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined');
   check('renderer has no Node access', isolated);
 
@@ -123,6 +143,7 @@ try {
   check('no console errors or page errors', problems.length === 0, problems.slice(0, 3).join(' | '));
 } finally {
   await app.close();
+  rmSync(SAVE_DIR, { recursive: true, force: true });
 }
 
 const failed = results.filter((r) => !r.ok).length;

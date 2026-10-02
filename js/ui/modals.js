@@ -258,8 +258,9 @@
           UI.btn('Download', async () => {
             if (!sim.ok && !(await UI.confirm('Safety check failed', 'The simulator found ' + sim.errors.length + ' problem(s) in this file that could crash the printer or ruin the plot. Download anyway?', 'Download anyway', true))) return;
             if (sim.ok && errs.length && !(await UI.confirm('Printer settings have problems', errs.join(' ') + ' Download anyway?', 'Download anyway', true))) return;
-            U.downloadText(o.name, res.text, 'text/x-gcode');
-            UI.toast('Saved ' + o.name + ' - copy it to the root of the printer SD card.', 'info', 5000);
+            let r;
+            try { r = await U.saveFiles([{ name: o.name, data: res.text, type: 'text/x-gcode' }]); } catch (e) { UI.toast('Could not save ' + o.name + ': ' + e.message, 'error'); return; }
+            if (r) UI.toast('Saved ' + o.name + U.savedTo(r) + ' - copy it to the root of the printer SD card.', 'info', 5000);
           }, { primary: sim.ok, small: true, icon: 'download' }),
           h('button', { class: 'btn btn-sm', onclick: () => { codeView.value = res.text.split('\n').slice(0, 400).join('\n'); lastText = res.text; } }, 'View'));
         files.appendChild(row);
@@ -412,8 +413,9 @@
       }
       if (!sim.ok && !(await UI.confirm('Safety check failed', 'The simulator found problems: ' + sim.errors.map(PP.GSim.fmtMsg).join(' | ') + '. Download anyway?', 'Download anyway', true))) return;
       const name = 'calibration_' + cur + (dryCb.input.checked && cur !== 'offset' ? '_DRYRUN' : '') + '.gcode';
-      U.downloadText(name, text, 'text/x-gcode');
-      UI.toast('Saved ' + name + ' (' + U.formatDuration(secs) + ') - safety check ' + (sim.ok ? 'passed' : 'FAILED'), sim.ok ? 'info' : 'warn');
+      let r;
+      try { r = await U.saveFiles([{ name, data: text, type: 'text/x-gcode' }]); } catch (e) { UI.toast('Could not save ' + name + ': ' + e.message, 'error'); return; }
+      if (r) UI.toast('Saved ' + name + U.savedTo(r) + ' (' + U.formatDuration(secs) + ') - safety check ' + (sim.ok ? 'passed' : 'FAILED'), sim.ok ? 'info' : 'warn');
     };
 
     const body = h('div', { class: 'calib' },

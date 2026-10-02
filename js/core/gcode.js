@@ -61,6 +61,8 @@
     // labels: short printer name for the welcome design, and whether the front has a door (canvas orientation label)
     shortName: '',
     door: false,
+    // which printer attachment STL the pen-holder tool saves with the resized parts ('' = ask for a generic one)
+    holder: '',
     startGcode: '',
     endGcode: '',
   };
@@ -70,14 +72,14 @@
   const A1_MOUNT = 'A1 pen holder (3dplotter.xyz: pen about 28 mm in front of the nozzle - confirm with the Offset finder)';
 
   const BUILTIN_PROFILES = [
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', shortName: 'X1C', door: true, pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', shortName: 'X1', door: true, pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', shortName: 'P1S', door: true, pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', shortName: 'X1C', door: true, holder: 'x1p1', pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', shortName: 'X1', door: true, holder: 'x1p1', pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', shortName: 'P1S', door: true, holder: 'x1p1', pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
     // A1: open bed-slinger (the bed moves in Y, the toolhead in X and Z). No door or enclosure walls for the holder
     // to hit, so the whole bed is the nozzle's safe zone; the pen sits in front of the nozzle, which leaves a
     // 256 x 228 mm plot area (3dplotter.xyz). No purge chute, and no X1/P1 G380 start preamble.
     Object.assign({}, BAMBU_BASE, {
-      id: 'bambu-a1', name: 'Bambu Lab A1', shortName: 'A1', builtin: true, mount: A1_MOUNT,
+      id: 'bambu-a1', name: 'Bambu Lab A1', shortName: 'A1', holder: 'a1', builtin: true, mount: A1_MOUNT,
       nozzleMinX: 0, nozzleMaxX: 256, nozzleMinY: 0, nozzleMaxY: 256,
       penOffsetX: 0, penOffsetY: -28,
       safeStart: false, purgeChute: false,

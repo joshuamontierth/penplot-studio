@@ -329,11 +329,14 @@
       }
       S.reset();
     },
-    saveProject() {
-      const data = S.serialize();
-      U.downloadText(U.safeFilename(S.project.name, 'plot') + '.penplot.json', JSON.stringify(data), 'application/json');
-      S.dirty = false;
-      PP.UI.toast('Project saved to your downloads folder', 'info');
+    async saveProject() {
+      const name = U.safeFilename(S.project.name, 'plot') + '.penplot.json';
+      try {
+        const r = await U.saveFiles([{ name, data: JSON.stringify(S.serialize()), type: 'application/json' }]);
+        if (!r) return;
+        S.dirty = false;
+        PP.UI.toast('Project saved' + (U.savedTo(r) || ' to your downloads folder'), 'info');
+      } catch (e) { PP.UI.toast('Could not save the project: ' + e.message, 'error'); }
     },
     async openProject(file) {
       file = file || await U.pickFile('.json,.penplot,application/json');
@@ -393,7 +396,8 @@
       }
       if (!layers.length) { PP.UI.toast('Nothing to export yet.', 'warn'); return; }
       const p = App.profile();
-      U.downloadText(U.safeFilename(S.project.name, 'plot') + '.svg', PP.SVG.exportSVG(layers, p.bedWidth, p.bedDepth), 'image/svg+xml');
+      U.saveFiles([{ name: U.safeFilename(S.project.name, 'plot') + '.svg', data: PP.SVG.exportSVG(layers, p.bedWidth, p.bedDepth), type: 'image/svg+xml' }])
+        .catch((e) => PP.UI.toast('Could not save the SVG: ' + e.message, 'error'));
     },
     async handleFiles(files) {
       for (const f of files) {

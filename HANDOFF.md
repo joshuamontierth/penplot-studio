@@ -561,6 +561,13 @@ Record every answer. They settle the assumptions in §3.
     saved custom profiles without the field keep the heater off.
 20. Desktop builds carry a stamp (commit and date, shown at the end of Help → Safety), written by `desktop/prepare.mjs`;
     the smoke test checks it and that the pen-holder dialog opens from Printer settings (11 checks).
+21. Saving goes through `U.saveFiles` (`js/core/util.js`). In the desktop app it uses `desktop/preload.js` →
+    `saveFiles` in `desktop/main.js`: a native Save dialog titled with the file name, or one folder dialog for
+    several files (it asks before replacing). The page only says "Saved" once the files are written; a cancel
+    says nothing. Blob downloads opened one dialog per file, all at once, titled `blob:app://…`. In a browser it
+    still downloads normally. The pen-holder tool now saves the cartridge, the spring and the printer's attachment
+    STL unchanged (profile `holder`: `x1p1` or `a1`, remembered per family). Smoke test: 12 checks, including a
+    real save through the bridge (`PP_TEST_SAVE_DIR`).
 
 ---
 
