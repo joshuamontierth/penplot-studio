@@ -1,15 +1,12 @@
 // Pen holder dialog: open synthetic cartridge/spring STLs through the real file pickers, resize live for a
 // measured pen, refuse a pen that is too big, and download both STLs.
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { test, expect } from './fixtures.js';
 import { dialog, openApp } from './helpers.js';
 
-const ROOT = new URL('..', import.meta.url).pathname;
 let parts;
 
 test.beforeAll(async () => {
-  const { default: Module } = await import(pathToFileURL(join(ROOT, 'vendor/manifold/manifold.js')).href);
+  const { default: Module } = await import(new URL('../vendor/manifold/manifold.js', import.meta.url).href);
   const api = await Module();
   api.setup();
   const { Manifold } = api;
