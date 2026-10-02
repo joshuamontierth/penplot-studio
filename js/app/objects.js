@@ -50,11 +50,11 @@
   const worldCache = new WeakMap();    // object -> world geom
   const MAX_PARAM_CACHE = 150;
   let epoch = 0;                       // bumped when fonts change, invalidates world cache
-  let outlineOnly = false;             // cutting mode: hatch fills are not cut, so no object has one
+  let cutLayers = new Set();           // ids of cut layers: hatch fills are not cut, so their objects have none
 
   function fillKey(o) {
     const f = o.fill;
-    if (outlineOnly || !f || !f.enabled) return 'nofill';
+    if (!f || !f.enabled || cutLayers.has(o.layerId)) return 'nofill';
     const s = Math.sqrt(Math.abs(o.scaleX * o.scaleY)) || 1;
     // quantise scale so live resizing does not recompute every frame for tiny changes
     const qs = Math.round(Math.log(s) * 40);
@@ -90,7 +90,7 @@
 
   function withFill(o, polys) {
     const f = o.fill;
-    if (outlineOnly || !f || !f.enabled) return polys;
+    if (!f || !f.enabled || cutLayers.has(o.layerId)) return polys;
     const loops = G.closedLoops(polys);
     if (!loops.length) return polys;
     const s = Math.sqrt(Math.abs(o.scaleX * o.scaleY)) || 1;
@@ -232,12 +232,13 @@
     }
   }
 
-  /** Cutting mode: leave hatch fills out of every object's geometry (the canvas, the plan and the export). */
-  function setOutlineOnly(v) {
-    if (outlineOnly === !!v) return;
-    outlineOnly = !!v;
+  /** Objects on these layers (cut layers) leave their hatch fill out: the canvas, the plan and the export. */
+  function setCutLayers(ids) {
+    const next = new Set(ids);
+    if (next.size === cutLayers.size && [...next].every(id => cutLayers.has(id))) return;
+    cutLayers = next;
     epoch++;
   }
 
-  PP.Objects = { create, local, world, matrix, path2d, corners, size, hit, toPath, clearFontCache, describe, DEFAULT_FILL, setOutlineOnly };
+  PP.Objects = { create, local, world, matrix, path2d, corners, size, hit, toPath, clearFontCache, describe, DEFAULT_FILL, setCutLayers };
 })(window.PP = window.PP || {});

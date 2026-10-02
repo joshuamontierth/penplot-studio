@@ -245,6 +245,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; m
 .swatch::-webkit-color-swatch-wrapper { padding: 0; }
 .swatch::-webkit-color-swatch { border: 1px solid var(--swatch-ring); border-radius: 50%; }
 .swatch::-moz-color-swatch { border: 1px solid var(--swatch-ring); border-radius: 50%; }
+.layer-tool { display: inline-flex; color: var(--text-2); }
 .layer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-rename { flex: 1; padding: 3px 6px !important; }
 .layer-count { font-size: 11px; color: var(--muted); min-width: 16px; text-align: right; }
@@ -421,7 +422,4 @@ textarea.code { font: 12px/1.5 var(--mono); background: var(--bg); color: var(--
 .ph-part select { width: auto; }
 .ph-result { font-size: 13px; color: var(--text-2); }
 .ph-canvas { width: 100%; max-width: 640px; align-self: center; height: auto; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
-
-/* Pen / Cut switch in the header: icons only when the window is narrow */
-.mode-seg .seg-btn { gap: 5px; }
-@media (max-width: 1440px) { .mode-seg .seg-label { display: none; } }
+.calib-left .seg { flex-wrap: wrap; }

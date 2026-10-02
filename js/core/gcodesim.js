@@ -11,6 +11,8 @@
  *   - Z pushed too far past the pen contact height (Z-Draw)
  *   - homing with the pen attached, pauses without bed clearance, pausing or
  *     ending with the pen down, heaters switched on, extrusion, coordinate resets
+ *   - the knife (cut layer): from a "; PP_TOOL knife" line on, strokes use the knife's offset, drawable area,
+ *     heights (Z-Cut) and Z floor
  *   - the one allowed heater use: the profile's pause warm-up (pauseTemp, at most 90 C), with no move until it
  *     is switched off again after the pause
  *   - malformed numbers (NaN / undefined), missing feed rates, unknown commands
@@ -71,6 +73,7 @@
    * Simulate G-code text.
    * opts: {
    *   drawZs: allowed pen-down heights (default [profile.zDraw]); ignored for dry runs
+   *   cutZs: allowed knife-down heights after "; PP_TOOL knife" (default [profile.zCut])
    *   dryRun: the file is a dry run (no drawing expected)
    *   expectedPauses: number of pauses expected (optional)
    *   keepMoves: keep travel segments for display (default true)
@@ -78,14 +81,27 @@
    */
   function simulate(text, profileIn, opts = {}) {
     const p = PP.GCode.normalizeProfile(profileIn);
-    const R = PP.GCode.reachableRect(p);
+    // the tool's view of the profile: the pen until a "; PP_TOOL knife" line, then the knife
+    let tp = p;
+    let R = PP.GCode.reachableRect(p);
     const W = p.bedWidth, D = p.bedDepth;
-    const ox = p.penOffsetX, oy = p.penOffsetY;
+    let ox = p.penOffsetX, oy = p.penOffsetY;
     const zLift = p.zLift;
     const dry = !!opts.dryRun;
     const drawZs = (opts.drawZs && opts.drawZs.length ? opts.drawZs : [p.zDraw]).map(Number);
-    const zFloorErr = PP.GCode.minSafeDrawZ(p);
-    const zFloorWarn = Math.max(zFloorErr, p.zDraw - 2.51);
+    const kp = PP.GCode.knifeProfile(p);
+    const cutZs = (opts.cutZs && opts.cutZs.length ? opts.cutZs : [PP.GCode.safeDrawZ(kp, kp.zDraw)]).map(Number);
+    let toolZs = drawZs;
+    let zFloorErr = PP.GCode.minSafeDrawZ(p);
+    let zFloorWarn = Math.max(zFloorErr, p.zDraw - 2.51);
+    const useKnife = () => {
+      tp = kp;
+      R = PP.GCode.reachableRect(kp);
+      ox = kp.penOffsetX; oy = kp.penOffsetY;
+      toolZs = cutZs;
+      zFloorErr = PP.GCode.minSafeDrawZ(kp);
+      zFloorWarn = Math.max(zFloorErr, kp.zDraw - 2.51);
+    };
     const keepMoves = opts.keepMoves !== false;
 
     const errors = [], warnings = [];
@@ -126,7 +142,7 @@
     let heat = 0, heatLine = 0, heatPaused = false; // hotend target set by the file (pause warm-up only)
     const pauseHeat = Math.min(Math.max(0, p.pauseTemp || 0), PP.GCode.MAX_PAUSE_TEMP);
     let lastLine = 0;
-    const isDrawZ = (zz) => drawZs.some(d => Math.abs(d - zz) < EPS);
+    const isDrawZ = (zz) => toolZs.some(d => Math.abs(d - zz) < EPS);
 
     const finishStroke = () => {
       if (stroke) {
@@ -164,6 +180,7 @@
         lastComment = pl.comment;
         const lm = /^===== Layer (\d+)\/(\d+)/.exec(pl.comment);
         if (lm) layer = parseInt(lm[1], 10) - 1;
+        if (pl.comment === 'PP_TOOL knife' && !pl.cmd) useKnife();
       }
       if (!pl.cmd) continue;
       lastLine = ln;
@@ -282,8 +299,8 @@
           if (moveZ) {
             zMoves++;
             if (attached) {
-              if (tz < zFloorErr - EPS) err(ln, 'z-too-low', 'Z' + tz + ' is below the safe minimum Z' + U2(zFloorErr) + ' (Z-Draw ' + p.zDraw + ') - the pen or nozzle could crash into the plate.');
-              else if (tz < zFloorWarn) warn(ln, 'z-low', 'Z' + tz + ' presses the pen more than 2.5 mm past Z-Draw ' + p.zDraw + '.');
+              if (tz < zFloorErr - EPS) err(ln, 'z-too-low', 'Z' + tz + ' is below the safe minimum Z' + U2(zFloorErr) + ' (' + (tp === kp ? 'Z-Cut ' : 'Z-Draw ') + tp.zDraw + ') - the ' + (tp === kp ? 'knife' : 'pen') + ' or nozzle could crash into the plate.');
+              else if (tz < zFloorWarn) warn(ln, 'z-low', 'Z' + tz + ' presses the ' + (tp === kp ? 'knife' : 'pen') + ' more than 2.5 mm past ' + (tp === kp ? 'Z-Cut ' : 'Z-Draw ') + tp.zDraw + '.');
             }
             if (feed > 30.01 && !moveXY) warn(ln, 'z-fast', 'Fast Z move (' + Math.round(feed) + ' mm/s).');
             if (tz < minZ) minZ = tz;
@@ -297,7 +314,7 @@
           const willDown = attached && tz < zLift - EPS;
           if (!wasDown && willDown) {
             if (dry) err(ln, 'dry-draw', 'Pen lowered in a dry-run file.');
-            else if (!isDrawZ(tz)) err(ln, 'odd-draw-z', 'Pen lowered to Z' + tz + ', which is not a configured drawing height (' + drawZs.join(', ') + ').');
+            else if (!isDrawZ(tz)) err(ln, 'odd-draw-z', 'Pen lowered to Z' + tz + ', which is not a configured drawing height (' + toolZs.join(', ') + ').');
             penDown = true;
             if (tz < minDrawZ) minDrawZ = tz;
             const px = tx + ox, py = ty + oy;
@@ -372,24 +389,26 @@
   function expectedPauses(profileIn, jobs) {
     const p = PP.GCode.normalizeProfile(profileIn);
     let n = (p.pauseForAttach ? 1 : 0) + (p.endPause ? 1 : 0);
-    jobs.forEach((j, i) => {
-      const pause = j.pauseBefore !== undefined ? j.pauseBefore : (i > 0 && p.layerPause && jobs.length > 1);
-      if (pause) n++;
-    });
+    jobs.forEach((j, i) => { if (PP.GCode.pauseBefore(p, jobs, i)) n++; });
     return n;
   }
 
   /** Simulate a file produced from these jobs, with matching expectations. */
   function check(text, profileIn, jobs, opts = {}) {
     const p = PP.GCode.normalizeProfile(profileIn);
-    const drawZs = Array.from(new Set(jobs.map(j => PP.GCode.safeDrawZ(p, PP.U.isNum(j.zDraw) ? j.zDraw : p.zDraw))));
+    const kp = PP.GCode.knifeProfile(p);
+    const zOf = (tp, j) => PP.GCode.safeDrawZ(tp, PP.U.isNum(j.zDraw) ? j.zDraw : tp.zDraw);
+    const pens = jobs.filter(j => j.tool !== 'cut'), cuts = jobs.filter(j => j.tool === 'cut');
+    const drawZs = Array.from(new Set(pens.map(j => zOf(p, j))));
+    const cutZs = Array.from(new Set(cuts.map(j => zOf(kp, j))));
     let expectedStrokes = 0, expectedDrawLen = 0;
-    for (const j of jobs) for (const q of j.polys) {
+    // a cut job's strokes are its knife paths (cutPlan: what build() writes), not the design
+    for (const j of jobs) for (const q of (j.tool === 'cut' ? PP.GCode.cutPlan(p, j).polys : j.polys)) {
       if (q.length < 4) continue;
       expectedStrokes++;
       expectedDrawLen += PP.Geo.polyLength(q);
     }
-    return simulate(text, p, { drawZs, dryRun: opts.dryRun, expectedPauses: expectedPauses(p, jobs), expectedStrokes, expectedDrawLen, keepMoves: opts.keepMoves });
+    return simulate(text, p, { drawZs, cutZs, dryRun: opts.dryRun, expectedPauses: expectedPauses(p, jobs), expectedStrokes, expectedDrawLen, keepMoves: opts.keepMoves });
   }
 
   function summary(res) {

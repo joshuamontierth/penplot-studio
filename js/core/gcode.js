@@ -144,7 +144,13 @@
     if (!(p.nozzleMinX >= 0 && p.nozzleMinY >= 0 && p.nozzleMaxX <= p.bedWidth && p.nozzleMaxY <= p.bedDepth)) errs.push('The nozzle limits must stay on the bed (X 0-' + p.bedWidth + ', Y 0-' + p.bedDepth + ' mm).');
     if (r.maxX - r.minX < 10 || r.maxY - r.minY < 10) errs.push('The reachable drawing area is smaller than 10 mm - check bed size, nozzle limits and pen offsets.');
     if (!(p.zLift - p.zDraw >= 1)) errs.push('Z-Lift must be at least 1 mm above Z-Draw (larger Z = bed further from the nozzle), otherwise the pen drags during travel.');
-    if (p.zDraw < 0.2) errs.push('Z-Draw must be at least 0.2 mm.');
+    if (p.zDraw < 1) errs.push('Z-Draw must be at least 1 mm.');
+    if (!(p.zLift - p.zCut >= 1)) errs.push('Z-Lift must be at least 1 mm above Z-Cut, otherwise the knife drags during travel.');
+    if (p.zCut < 1) errs.push('Z-Cut must be at least 1 mm.');
+    if (!(p.bladeOffset >= 0 && p.bladeOffset <= 2)) errs.push('The blade offset must be between 0 and 2 mm.');
+    if (!(p.cutSpeed > 0)) errs.push('The cut speed must be greater than 0.');
+    const kr = reachableRect(knifeProfile(p));
+    if (kr.maxX - kr.minX < 10 || kr.maxY - kr.minY < 10) errs.push('The knife\'s reachable area is smaller than 10 mm - check the knife offsets.');
     if (p.zAttach < p.zLift) errs.push('Attach height should be at least the Z-Lift height.');
     if (p.zAttach > p.zMax || p.zEnd > p.zMax || p.zLift > p.zMax) errs.push('A Z height is above the maximum Z (' + p.zMax + ' mm).');
     if (!(p.drawSpeed > 0) || !(p.travelSpeed > 0) || !(p.zSpeed > 0)) errs.push('Speeds must be greater than 0.');
@@ -157,14 +163,63 @@
     return errs;
   }
 
-  /** Lowest allowed pen-down height: at most 4 mm past contact, never below half the contact height or 0.5 mm. */
+  /**
+   * Lowest allowed pen-down (or knife-down) height: at most 4 mm past contact, never below half the contact height,
+   * and never below 1 mm - the simulator treats any XY move under Z 1 as the nozzle scraping the plate.
+   */
   function minSafeDrawZ(p) {
-    return Math.max(p.zDraw - 4, p.zDraw * 0.5, 0.5);
+    return Math.max(p.zDraw - 4, p.zDraw * 0.5, 1);
   }
 
   /** Clamp a pen-down height into the safe window [minSafeDrawZ, zLift - 0.5]. */
   function safeDrawZ(p, z) {
     return U.clamp(z, minSafeDrawZ(p), p.zLift - 0.5);
+  }
+
+  /** The knife as a "pen": the profile with the knife's offsets, Z-Cut as Z-Draw and the cut speed. */
+  function knifeProfile(p) {
+    return Object.assign({}, p, {
+      penOffsetX: p.knifeSameAsPen ? p.penOffsetX : p.knifeOffsetX,
+      penOffsetY: p.knifeSameAsPen ? p.penOffsetY : p.knifeOffsetY,
+      zDraw: p.zCut, drawSpeed: p.cutSpeed,
+    });
+  }
+
+  /** Where the blade tip may cut: the knife's reachable area less the blade offset (the axis runs ahead of the tip). */
+  function cutRect(p) {
+    const R = reachableRect(knifeProfile(p));
+    const m = Math.max(0, p.bladeOffset || 0) + 0.1;
+    return { minX: R.minX + m, minY: R.minY + m, maxX: R.maxX - m, maxY: R.maxY - m };
+  }
+
+  /** Pause before job i: its own setting, else a layer pause, and always for the swap from pen to knife. */
+  function pauseBefore(p, jobs, i) {
+    const j = jobs[i];
+    if (j.pauseBefore !== undefined) return !!j.pauseBefore;
+    if (i === 0 || jobs.length < 2) return false;
+    return !!p.layerPause || (j.tool === 'cut' && jobs[i - 1].tool !== 'cut');
+  }
+
+  /**
+   * What build() cuts for a cut job (tool 'cut'): the knife paths (holder axis, bed mm) in cutting order, one per
+   * pass, with the profile seen as the knife. job.bladeOffset overrides the profile's (blade offset test).
+   */
+  function cutPlan(profileIn, job) {
+    const p = normalizeProfile(profileIn);
+    const k = knifeProfile(p);
+    const r = U.isNum(job.bladeOffset) ? job.bladeOffset : p.bladeOffset;
+    const passes = U.clamp(Math.round(p.cutPasses || 1), 1, 10);
+    const ordered = PP.Knife.order(job.polys, { x: p.parkX + k.penOffsetX, y: p.parkY + k.penOffsetY });
+    const polys = [];
+    let dir = null;
+    for (const q of ordered) {
+      for (let i = 0; i < passes; i++) {
+        const c = PP.Knife.compensate(q, { offset: r, swivel: p.swivelAngle, overcut: p.overcut, dir });
+        dir = c.dir;
+        if (c.poly.length >= 4) polys.push(c.poly);
+      }
+    }
+    return { polys, profile: k };
   }
 
   /** Text for a G-code comment: one line, so names can never inject commands. */
@@ -203,22 +258,30 @@
     // Bambu firmware: M400 P<ms> is the dwell used in Bambu's own G-code; Marlin: G4 P<ms>
     const dwell = (ms) => (isBambu ? 'M400 P' : 'G4 P') + Math.round(ms);
 
-    // Pen-down height per job, clamped into the safe window
-    const jobZ = jobs.map(j => {
+    // Cut jobs (drag knife): knife paths in cutting order, and the profile as seen by the knife
+    const cutPlans = jobs.map(j => (j.tool === 'cut' ? cutPlan(p, j) : null));
+    const toolP = (ji) => (cutPlans[ji] ? cutPlans[ji].profile : p);
+
+    // Pen-down (knife-down) height per job, clamped into the safe window
+    const jobZ = jobs.map((j, ji) => {
       if (dry) return p.zLift;
-      const want = U.isNum(j.zDraw) ? j.zDraw : p.zDraw;
-      const z = safeDrawZ(p, want);
-      if (Math.abs(z - want) > 1e-9) warnings.push('Layer "' + (j.name || '?') + '": Z-Draw ' + U.fmt(want, 2) + ' was clamped to ' + U.fmt(z, 2) + ' (allowed ' + U.fmt(minSafeDrawZ(p), 2) + '..' + U.fmt(p.zLift - 0.5, 2) + ').');
+      const tp = toolP(ji);
+      const want = U.isNum(j.zDraw) ? j.zDraw : tp.zDraw;
+      const z = safeDrawZ(tp, want);
+      if (Math.abs(z - want) > 1e-9) warnings.push('Layer "' + (j.name || '?') + '": ' + (cutPlans[ji] ? 'Z-Cut ' : 'Z-Draw ') + U.fmt(want, 2) + ' was clamped to ' + U.fmt(z, 2) + ' (allowed ' + U.fmt(minSafeDrawZ(tp), 2) + '..' + U.fmt(p.zLift - 0.5, 2) + ').');
       return z;
     });
+    const jobPolys = (ji) => (cutPlans[ji] ? cutPlans[ji].polys : jobs[ji].polys);
+    const jobSpeed = (ji) => jobs[ji].drawSpeed || toolP(ji).drawSpeed;
 
     // Time estimate per job
     let startPt = { x: p.parkX + p.penOffsetX, y: p.parkY + p.penOffsetY };
     let totalTime = 0, drawLen = 0, travelLen = 0, lifts = 0;
     const jobEst = jobs.map((j, ji) => {
       const zd = jobZ[ji];
-      const est = O.estimate(j.polys, startPt, Object.assign({}, p, { drawSpeed: j.drawSpeed || p.drawSpeed, zDraw: zd }));
-      if (j.polys.length) { const last = j.polys[j.polys.length - 1]; startPt = { x: last[last.length - 2], y: last[last.length - 1] }; }
+      const polys = jobPolys(ji);
+      const est = O.estimate(polys, startPt, Object.assign({}, p, { drawSpeed: jobSpeed(ji), zDraw: zd }));
+      if (polys.length) { const last = polys[polys.length - 1]; startPt = { x: last[last.length - 2], y: last[last.length - 1] }; }
       totalTime += est.time; drawLen += est.drawLen; travelLen += est.travelLen; lifts += est.lifts;
       return est;
     });
@@ -289,7 +352,7 @@
     if (p.pauseForAttach) {
       warmForPause(L, p);
       L('; ' + '*'.repeat(58));
-      L('; PAUSE: attach the pen holder now, check the pen height,');
+      L(jobs.length && jobs[0].tool === 'cut' ? '; PAUSE: attach the knife holder now, check the blade depth,' : '; PAUSE: attach the pen holder now, check the pen height,');
       L(';        then press RESUME on the printer screen.');
       L('; ' + '*'.repeat(58));
       L('; PP_PAUSE attach');
@@ -301,38 +364,44 @@
     L('');
 
     // --- body
-    const nx = (x) => x - p.penOffsetX;
-    const ny = (y) => y - p.penOffsetY;
+    let ox = p.penOffsetX, oy = p.penOffsetY; // the current tool's offset (the knife's can differ from the pen's)
+    const nx = (x) => x - ox;
+    const ny = (y) => y - oy;
     let clampCount = 0;
     const clampX = (x) => { if (x < p.nozzleMinX - 1e-6 || x > p.nozzleMaxX + 1e-6) { clampCount++; return U.clamp(x, p.nozzleMinX, p.nozzleMaxX); } return x; };
     const clampY = (y) => { if (y < p.nozzleMinY - 1e-6 || y > p.nozzleMaxY + 1e-6) { clampCount++; return U.clamp(y, p.nozzleMinY, p.nozzleMaxY); } return y; };
 
     jobs.forEach((j, ji) => {
       const zd = jobZ[ji];
-      const drawF = Math.round((j.drawSpeed || p.drawSpeed) * 60);
+      const cut = !!cutPlans[ji];
+      ox = toolP(ji).penOffsetX; oy = toolP(ji).penOffsetY;
+      const drawF = Math.round(jobSpeed(ji) * 60);
       const est = jobEst[ji];
-      const pauseHere = j.pauseBefore !== undefined ? j.pauseBefore : (ji > 0 && p.layerPause && jobs.length > 1);
-      L('; ===== Layer ' + (ji + 1) + '/' + jobs.length + ': ' + c1(j.name || 'Layer') + (j.color ? ' (' + c1(j.color) + ')' : '') + ' =====');
+      const pauseHere = pauseBefore(p, jobs, ji);
+      const toKnife = cut && ji > 0 && jobs[ji - 1].tool !== 'cut';
+      L('; ===== Layer ' + (ji + 1) + '/' + jobs.length + ': ' + c1(j.name || 'Layer') + (j.color ? ' (' + c1(j.color) + ')' : '') + (cut ? ' - knife' : '') + ' =====');
       if (j.comment) L('; ' + c1(j.comment));
       if (pauseHere) {
         L('G1 Z' + f(p.zAttach) + ' F' + zF + ' ; lower the bed for pen change');
         L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF + ' ; park toolhead');
         L('M400');
         warmForPause(L, p);
-        L('; PAUSE: ' + c1(j.pauseMessage || ('change to the pen for layer "' + (j.name || ji + 1) + '"')) + ', then press RESUME');
+        L('; PAUSE: ' + c1(j.pauseMessage || (toKnife ? 'swap the pen holder for the knife holder' : 'change to the pen for layer "' + (j.name || ji + 1) + '"')) + ', then press RESUME');
         L('; PP_PAUSE swap');
         L(p.pauseCommand || 'M400 U1');
         L('G90');
         coolAfterPause(L, p);
         L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
       }
+      // the simulator switches to the knife's offset, heights and drawable area here
+      if (cut) L('; PP_TOOL knife');
       let prevT = 0;
-      j.polys.forEach((poly, pi) => {
+      jobPolys(ji).forEach((poly, pi) => {
         if (poly.length < 4) return;
         let lx = f(clampX(nx(poly[0]))), ly = f(clampY(ny(poly[1])));
         L('G1 X' + lx + ' Y' + ly + ' F' + travelF);
-        L('G1 Z' + f(zd) + ' F' + zF + ' ; pen down');
-        if (p.penDownDelay > 0) L(dwell(p.penDownDelay));
+        L('G1 Z' + f(zd) + ' F' + zF + (cut ? ' ; knife down' : ' ; pen down'));
+        if (!cut && p.penDownDelay > 0) L(dwell(p.penDownDelay));
         let first = true;
         for (let k = 2; k < poly.length; k += 2) {
           // skip points that round to the same G-code coordinates as the previous move
@@ -342,8 +411,8 @@
           first = false;
           lx = sx; ly = sy;
         }
-        if (p.penUpDelay > 0) L(dwell(p.penUpDelay));
-        L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
+        if (!cut && p.penUpDelay > 0) L(dwell(p.penUpDelay));
+        L('G1 Z' + f(p.zLift) + ' F' + zF + (cut ? ' ; knife up' : ' ; pen up'));
         const t = est.cumulative[pi];
         elapsed += t - prevT;
         prevT = t;
@@ -441,6 +510,8 @@
       return { jobs, legend, rect: r };
     }
 
+    if (opts.type === 'cutdepth' || opts.type === 'bladeoffset') return cutTests(p, opts);
+
     const zsRaw = (opts.zValues && opts.zValues.length) ? opts.zValues.slice() : [p.zDraw];
     const zs = Array.from(new Set(zsRaw.filter(U.isNum).map(z => U.round(safeDrawZ(p, z), 3)))).sort((a, b) => a - b);
     if (zs.length < zsRaw.length) legend.push('Some Z values were outside the safe range ' + U.fmt(p.zDraw - 4, 2) + '..' + U.fmt(p.zLift - 0.5, 2) + ' and were clamped.');
@@ -481,6 +552,42 @@
   }
 
   /**
+   * Knife tests: a row of squares, each with a triangle inside to weed. 'cutdepth' cuts them at stepped Z-Cut values
+   * (highest Z = lightest first); 'bladeoffset' at the profile's Z-Cut with stepped blade offsets.
+   */
+  function cutTests(p, opts) {
+    const k = knifeProfile(p);
+    const CR = cutRect(p);
+    const depth = opts.type === 'cutdepth';
+    const uniq = (a) => Array.from(new Set(a)).sort((x, y) => x - y);
+    const values = depth
+      ? uniq((opts.zValues && opts.zValues.length ? opts.zValues : [p.zCut]).filter(U.isNum).map(z => U.round(safeDrawZ(k, z), 3)))
+      : uniq((opts.offsets && opts.offsets.length ? opts.offsets : [0, 0.15, 0.25, 0.35, 0.5]).filter(v => U.isNum(v) && v >= 0 && v <= 2).map(v => U.round(v, 3)));
+    const s = opts.cell || 12, gap = 6;
+    const totalW = values.length * (s + gap) - gap;
+    if (!values.length) throw new Error('No values to test.');
+    if (totalW > CR.maxX - CR.minX || s > CR.maxY - CR.minY) throw new Error('The test (' + Math.round(totalW) + ' mm wide) does not fit where the knife can cut. Use fewer values or a smaller cell.');
+    const x0 = (CR.minX + CR.maxX) / 2 - totalW / 2, y0 = (CR.minY + CR.maxY) / 2 - s / 2;
+    const cell = (x) => [
+      [x, y0, x + s, y0, x + s, y0 + s, x, y0 + s, x, y0],
+      [x + s * 0.25, y0 + s * 0.25, x + s * 0.75, y0 + s * 0.25, x + s * 0.5, y0 + s * 0.7, x + s * 0.25, y0 + s * 0.25],
+    ];
+    const order = depth ? values.slice().reverse() : values;
+    const jobs = order.map(v => {
+      const x = x0 + values.indexOf(v) * (s + gap);
+      return Object.assign({ name: (depth ? 'Z-Cut ' : 'Blade offset ') + U.fmt(v, 2), tool: 'cut', polys: cell(x), pauseBefore: false }, depth ? { zDraw: v } : { bladeOffset: v });
+    });
+    const legend = depth
+      ? ['Left to right: Z-Cut = ' + values.map(v => U.fmt(v, 2)).join(', ') + ' mm. Cut from the highest Z (lightest) to the lowest.',
+        'Each square has a triangle inside. Pick the highest Z that cuts through the material but not its backing: the triangle weeds cleanly and the backing shows no cut.',
+        'Enter it as Z-Cut in Printer settings → Cutting.']
+      : ['Left to right: blade offset = ' + values.map(v => U.fmt(v, 2)).join(', ') + ' mm, all at Z-Cut ' + U.fmt(safeDrawZ(k, k.zDraw), 2) + ' mm.',
+        'Pick the square whose corners are sharp and fully cut through, without hooks or rounded corners.',
+        'Enter it as the blade offset in Printer settings → Cutting.'];
+    return { jobs, legend };
+  }
+
+  /**
    * Offset finder: the pen draws a cross while the nozzle is at a known spot, then
    * (after you remove the pen holder) the bare nozzle is parked 3 mm above the same
    * spot so you can measure how far the cross is from the nozzle tip.
@@ -488,11 +595,14 @@
    */
   const MEASURE_S = 180; // offset finder: seconds the bare nozzle waits over the cross
 
-  function offsetFinder(profileIn) {
+  // opts.tool 'cut': the knife cuts the cross (knife paths, Z-Cut) - for the knife offset (docs/cutting.md)
+  function offsetFinder(profileIn, opts = {}) {
     const p = normalizeProfile(profileIn);
+    const knife = opts.tool === 'cut';
+    const tool = knife ? 'knife' : 'pen';
     const f = (v) => U.fmt(v, 3);
     const isBambu = p.firmware === 'bambu';
-    const zF = Math.round(p.zSpeed * 60), travelF = Math.round(p.travelSpeed * 60), drawF = Math.round(Math.min(p.drawSpeed, 20) * 60);
+    const zF = Math.round(p.zSpeed * 60), travelF = Math.round(p.travelSpeed * 60), drawF = Math.round(Math.min(knife ? p.cutSpeed : p.drawSpeed, 20) * 60);
     const nx = U.clamp((p.nozzleMinX + p.nozzleMaxX) / 2, p.nozzleMinX + 12, p.nozzleMaxX - 12);
     const ny = U.clamp((p.nozzleMinY + p.nozzleMaxY) / 2, p.nozzleMinY + 12, p.nozzleMaxY - 12);
     const pause = p.pauseCommand || 'M400 U1';
@@ -500,11 +610,11 @@
     const L = (s) => out.push(s);
     L('; ' + APP + ' ' + VERSION + ' - OFFSET FINDER');
     L('; Printer profile: ' + c1(p.name));
-    L('; The pen draws a cross + circle while the NOZZLE is at X' + f(nx) + ' Y' + f(ny) + '.');
-    L('; Then you remove the pen holder, and the bare nozzle waits ' + MEASURE_S + ' s at Z-Lift over that same point.');
+    L('; The ' + tool + (knife ? ' cuts' : ' draws') + ' a cross + circle while the NOZZLE is at X' + f(nx) + ' Y' + f(ny) + '.');
+    L('; Then you remove the ' + tool + ' holder, and the bare nozzle waits ' + MEASURE_S + ' s at Z-Lift over that same point.');
     L('; Measure from the nozzle tip to the center of the cross:');
-    L(';   pen offset X = +distance if the cross is to the RIGHT of the nozzle, - if LEFT');
-    L(';   pen offset Y = +distance if the cross is BEHIND the nozzle, - if IN FRONT');
+    L(';   ' + tool + ' offset X = +distance if the cross is to the RIGHT of the nozzle, - if LEFT');
+    L(';   ' + tool + ' offset Y = +distance if the cross is BEHIND the nozzle, - if IN FRONT');
     L('G90');
     L('G21');
     L('M83');
@@ -520,12 +630,28 @@
     L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF);
     L('M400');
     warmForPause(L, p);
-    L('; PAUSE: attach the pen holder with the pen, then press RESUME');
+    L(knife ? '; PAUSE: attach the knife holder, then press RESUME' : '; PAUSE: attach the pen holder with the pen, then press RESUME');
     L('; PP_PAUSE attach');
     L(pause);
     L('G90');
     coolAfterPause(L, p);
     L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
+    if (knife) {
+      // the same cross and circle as knife paths (the axis runs ahead of the blade tip), at Z-Cut
+      const k = knifeProfile(p), zCut = safeDrawZ(k, k.zDraw);
+      L('; PP_TOOL knife');
+      const circle = [];
+      for (let i = 0; i <= 36; i++) circle.push(nx + Math.cos(i / 36 * Math.PI * 2) * 4, ny + Math.sin(i / 36 * Math.PI * 2) * 4);
+      let dir = null;
+      for (const tip of [[nx - 8, ny, nx + 8, ny], [nx, ny - 8, nx, ny + 8], circle]) {
+        const c = PP.Knife.compensate(tip, { offset: p.bladeOffset, swivel: p.swivelAngle, overcut: p.overcut, dir });
+        dir = c.dir;
+        L('G1 X' + f(c.poly[0]) + ' Y' + f(c.poly[1]) + ' F' + travelF);
+        L('G1 Z' + f(zCut) + ' F' + zF + ' ; knife down');
+        for (let i = 2; i < c.poly.length; i += 2) L('G1 X' + f(c.poly[i]) + ' Y' + f(c.poly[i + 1]) + (i === 2 ? ' F' + drawF : ''));
+        L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; knife up');
+      }
+    }
     const seg = (x0, y0, x1, y1) => {
       L('G1 X' + f(x0) + ' Y' + f(y0) + ' F' + travelF);
       L('G1 Z' + f(p.zDraw) + ' F' + zF + ' ; pen down');
@@ -533,21 +659,23 @@
       L('G1 X' + f(x1) + ' Y' + f(y1) + ' F' + drawF);
       L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
     };
-    seg(nx - 8, ny, nx + 8, ny);
-    seg(nx, ny - 8, nx, ny + 8);
-    // circle r = 4 around the cross
-    L('G1 X' + f(nx + 4) + ' Y' + f(ny) + ' F' + travelF);
-    L('G1 Z' + f(p.zDraw) + ' F' + zF + ' ; pen down');
-    for (let i = 1; i <= 36; i++) {
-      const a = i / 36 * Math.PI * 2;
-      L('G1 X' + f(nx + Math.cos(a) * 4) + ' Y' + f(ny + Math.sin(a) * 4) + (i === 1 ? ' F' + drawF : ''));
+    if (!knife) {
+      seg(nx - 8, ny, nx + 8, ny);
+      seg(nx, ny - 8, nx, ny + 8);
+      // circle r = 4 around the cross
+      L('G1 X' + f(nx + 4) + ' Y' + f(ny) + ' F' + travelF);
+      L('G1 Z' + f(p.zDraw) + ' F' + zF + ' ; pen down');
+      for (let i = 1; i <= 36; i++) {
+        const a = i / 36 * Math.PI * 2;
+        L('G1 X' + f(nx + Math.cos(a) * 4) + ' Y' + f(ny + Math.sin(a) * 4) + (i === 1 ? ' F' + drawF : ''));
+      }
+      L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
     }
-    L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
     L('G1 Z' + f(p.zAttach) + ' F' + zF);
     L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF);
     L('M400');
     warmForPause(L, p);
-    L('; PAUSE: remove the pen holder now (keep the paper in place), then press RESUME');
+    L(knife ? '; PAUSE: remove the knife holder now (keep the material in place), then press RESUME' : '; PAUSE: remove the pen holder now (keep the paper in place), then press RESUME');
     L('; PP_PAUSE remove');
     L(pause);
     L('G90');
@@ -567,10 +695,10 @@
       text: out.join('\n'),
       nozzle: { x: nx, y: ny },
       legend: [
-        'The pen draws a 16 mm cross with a small circle while the nozzle sits at X' + U.fmt(nx, 1) + ' Y' + U.fmt(ny, 1) + '.',
-        'At the second pause, remove the pen holder. After Resume the bare nozzle moves over the same point at Z-Lift (' + U.fmt(p.zLift, 1) + ' mm) and waits ' + Math.round(MEASURE_S / 60) + ' minutes.',
+        'The ' + tool + (knife ? ' cuts' : ' draws') + ' a 16 mm cross with a small circle while the nozzle sits at X' + U.fmt(nx, 1) + ' Y' + U.fmt(ny, 1) + '.',
+        'At the second pause, remove the ' + tool + ' holder. After Resume the bare nozzle moves over the same point at Z-Lift (' + U.fmt(p.zLift, 1) + ' mm) and waits ' + Math.round(MEASURE_S / 60) + ' minutes.',
         'During that wait, measure from the nozzle tip to the center of the cross (a square or a ruler held upright helps): right of the nozzle = +X, left = -X, behind (toward the back) = +Y, in front = -Y.',
-        'Enter those numbers as Pen offset X / Y in Printer settings. Expected for the Falu mount: about X -28, Y -35.',
+        knife ? 'Enter those numbers as Knife offset X / Y in Printer settings → Cutting (untick "The knife sits where the pen does").' : 'Enter those numbers as Pen offset X / Y in Printer settings. Expected for the Falu mount: about X -28, Y -35.',
       ],
     };
   }
@@ -579,6 +707,10 @@
     APP, VERSION,
     MAX_PAUSE_TEMP,
     offsetFinder,
+    knifeProfile,
+    cutRect,
+    cutPlan,
+    pauseBefore,
     safeDrawZ,
     minSafeDrawZ,
     BUILTIN_PROFILES,

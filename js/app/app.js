@@ -91,6 +91,19 @@
   // Plan (what will be plotted)
   // ---------------------------------------------------------------------------
   /** Build ordered, clipped pen paths per visible layer. */
+  /** A cut layer's shapes as cut: mirrored left-right (iron-on vinyl is cut from the back), plus a weed box. */
+  function cutLayerPolys(L, polys) {
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+    for (const q of polys) for (let i = 0; i < q.length; i += 2) { mnx = Math.min(mnx, q[i]); mxx = Math.max(mxx, q[i]); mny = Math.min(mny, q[i + 1]); mxy = Math.max(mxy, q[i + 1]); }
+    let out = polys;
+    if (L.mirror) out = out.map(q => q.map((v, i) => (i % 2 === 0 ? mnx + mxx - v : v)));
+    if (L.weedBox) {
+      const m = U.isNum(L.weedMargin) ? L.weedMargin : 3;
+      out = out.concat([[mnx - m, mny - m, mxx + m, mny - m, mxx + m, mxy + m, mnx - m, mxy + m, mnx - m, mny - m]]);
+    }
+    return out;
+  }
+
   App.buildPlan = function (opts = {}) {
     const p = opts.profile ? PP.GCode.normalizeProfile(opts.profile) : App.profile();
     const prefs = Object.assign({}, App.prefs, opts.prefs || {});
@@ -107,6 +120,21 @@
         for (const q of OBJ.world(o).polys) polys.push(q);
       }
       if (!polys.length) continue;
+      if (L.tool === 'cut') {
+        // knife: mirrored for iron-on vinyl, an optional weed box, clipped to where the blade can reach. Ordering
+        // and the knife paths are build()'s job (GCode.cutPlan): inside first, never joined
+        const cutPolys = cutLayerPolys(L, polys);
+        const prep = PP.Optimizer.prepare(cutPolys, { tolerance: prefs.simplify, rect: PP.GCode.cutRect(p), minLength: prefs.minLength });
+        clipped = clipped || prep.clipped;
+        removed += prep.removed;
+        if (!prep.polys.length) continue;
+        jobs.push({
+          layerId: L.id, name: L.name, color: L.color, polys: prep.polys, tool: 'cut',
+          zDraw: U.isNum(L.zDraw) ? L.zDraw : undefined,
+          drawSpeed: U.isNum(L.speed) && L.speed > 0 ? L.speed : undefined,
+        });
+        continue;
+      }
       const prep = PP.Optimizer.prepare(polys, { tolerance: prefs.simplify, rect: R, minLength: prefs.minLength });
       clipped = clipped || prep.clipped;
       removed += prep.removed;
@@ -123,10 +151,12 @@
     let time = 0, drawLen = 0, travelLen = 0, lifts = 0;
     let s0 = { x: p.parkX + p.penOffsetX, y: p.parkY + p.penOffsetY };
     for (const j of jobs) {
-      const e = PP.Optimizer.estimate(j.polys, s0, Object.assign({}, p, { drawSpeed: j.drawSpeed || p.drawSpeed }));
+      const cut = j.tool === 'cut';
+      const polys = cut ? PP.GCode.cutPlan(p, j).polys : j.polys;
+      const e = PP.Optimizer.estimate(polys, s0, Object.assign({}, p, { drawSpeed: j.drawSpeed || (cut ? p.cutSpeed : p.drawSpeed) }));
       j.est = e;
       time += e.time; drawLen += e.drawLen; travelLen += e.travelLen; lifts += e.lifts;
-      const last = j.polys[j.polys.length - 1];
+      const last = polys[polys.length - 1];
       s0 = { x: last[last.length - 2], y: last[last.length - 1] };
     }
     return { jobs, clipped, removed, profile: p, stats: { time, drawLen, travelLen, lifts }, start: { x: p.parkX + p.penOffsetX, y: p.parkY + p.penOffsetY } };
@@ -434,18 +464,13 @@
   ];
   App.TOOLS = TOOLS;
 
-  // Pen or knife: hatch fills are not cut, and cutting has no G-code yet (the Cut job dialog sums the job up)
+  // The cut layer's objects leave their hatch fills out (a knife cuts outlines only)
   S.events.on('change', (k) => {
-    if (k === 'mode' || k === 'load' || k === 'undo' || k === 'redo') {
-      PP.Objects.setOutlineOnly(S.project.mode === 'cut');
+    if (k === 'layers' || k === 'load' || k === 'undo' || k === 'redo') {
+      PP.Objects.setCutLayers(S.project.layers.filter(l => l.tool === 'cut').map(l => l.id));
       if (App.view) App.view.invalidate();
     }
   });
-  App.download = () => (S.project.mode === 'cut' ? PP.UI.openCutJob() : PP.UI.openExport());
-  App.preview = () => {
-    if (S.project.mode === 'cut' && !PP.Preview.active) { PP.UI.toast('The preview plays G-code, and cutting has none yet.', 'warn'); return; }
-    PP.Preview.toggle();
-  };
 
   App.setTool = function (id) {
     App.view.setTool(id);
@@ -475,22 +500,6 @@
     const paperB = h('button', { class: 'btn btn-menu', title: 'Paper size and position', onclick: () => UI.openPaper(paperB) }, UI.icon('paper', 15), paperLbl, UI.icon('chevron', 12));
     S.events.on('change', (k) => { if (k === 'paper' || k === 'load' || k === 'undo' || k === 'redo') paperLbl.textContent = UI.paperLabel(); });
 
-    // Pen or drag knife for the whole project (cutting: docs/cutting.md)
-    const modeSeg = UI.segmented({
-      options: [{ value: 'draw', label: 'Pen', icon: 'pen', showLabel: true, title: 'Draw with a pen' }, { value: 'cut', label: 'Cut', icon: 'knife', showLabel: true, title: 'Cut with a drag knife' }],
-      value: S.project.mode, onChange: (v) => S.setMode(v),
-    });
-    modeSeg.classList.add('mode-seg');
-    const downloadB = UI.btn('Download G-code', () => App.download(), { icon: 'download', primary: true, title: 'Generate G-code (Ctrl+E)' });
-    const syncMode = () => {
-      const cut = S.project.mode === 'cut';
-      modeSeg.setValue(S.project.mode);
-      downloadB.lastChild.textContent = cut ? 'Cut job' : 'Download G-code';
-      document.body.classList.toggle('cut-mode', cut);
-    };
-    S.events.on('change', (k) => { if (k === 'mode' || k === 'load' || k === 'undo' || k === 'redo') syncMode(); });
-    syncMode();
-
     const nameInput = h('input', { class: 'project-name', value: S.project.name, title: 'Project name', spellcheck: 'false' });
     nameInput.addEventListener('change', () => { S.project.name = nameInput.value.trim() || 'Untitled plot'; S.changed('name'); });
     nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); e.stopPropagation(); });
@@ -512,7 +521,6 @@
         UI.iconBtn('save', 'Save project (Ctrl+S)', () => App.files.saveProject()),
         h('span', { class: 'vsep' }), undoB, redoB),
       h('div', { class: 'hspacer' }),
-      modeSeg,
       h('div', { class: 'hgroup printer-group' }, UI.icon('printer', 15), profSel,
         UI.iconBtn('settings', 'Printer & plotter settings', () => UI.openPrinterSettings(), { size: 15 })),
       paperB,
@@ -520,8 +528,8 @@
       h('div', { class: 'hgroup' },
         UI.btn('Calibrate', () => UI.openCalibration(), { cls: 'btn-ghost', title: 'Calibration test files' }),
         UI.btn('Help', () => UI.openHelp(), { cls: 'btn-ghost', title: 'How to plot on your X1C / help' }),
-        UI.btn('Preview', () => App.preview(), { cls: 'btn-preview', title: 'Animated draw preview' }),
-        downloadB),
+        UI.btn('Preview', () => PP.Preview.toggle(), { cls: 'btn-preview', title: 'Animated draw preview' }),
+        UI.btn('Download G-code', () => UI.openExport(), { icon: 'download', primary: true, title: 'Generate G-code (Ctrl+E)' })),
     );
   }
 
@@ -743,7 +751,7 @@
     window.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       const k = e.key.toLowerCase();
-      const fn = k === 's' ? App.files.saveProject : k === 'o' ? App.files.openProject : k === 'e' ? App.download : null;
+      const fn = k === 's' ? App.files.saveProject : k === 'o' ? App.files.openProject : k === 'e' ? PP.UI.openExport : null;
       if (!fn) return;
       e.preventDefault(); // never the browser's own Save page / Open file
       if (PP.UI.hasModal()) return;

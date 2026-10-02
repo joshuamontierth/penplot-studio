@@ -166,7 +166,9 @@ min 0. Any real user browser was fresh, but check the **Printer settings** once.
 
 ### 4.4 Safety rules in the generator
 
-- Pen-down Z is clamped to `[minSafeDrawZ, zLift − 0.5]`, where `minSafeDrawZ = max(zDraw − 4, zDraw/2, 0.5)`.
+- Pen-down Z is clamped to `[minSafeDrawZ, zLift − 0.5]`, where `minSafeDrawZ = max(zDraw − 4, zDraw/2, 1)` (1 mm
+  since 2026-10-02: below that every XY move scrapes the plate; Z-Draw and Z-Cut must be at least 1 mm). Knife-down
+  Z uses the same rule with Z-Cut (`knifeProfile`).
   Out-of-range values come back as a warning.
 - `validateProfile` requires Z-Lift ≥ Z-Draw + 1, park and end inside the safe zone, and the park position's pen over
   the plate.
@@ -583,9 +585,11 @@ Record every answer. They settle the assumptions in §3.
     **Add files…** takes STLs or the downloaded ZIP (`U.unzip`), matches each file to a part by name, and refuses a
     cartridge or spring without a pen bore. Parts are kept in IndexedDB (`mount:<part>`, with
     `navigator.storage.persist()`). `*.stl` and `*.3mf` are git-ignored.
-26. Cutting (branch `cutting`, UI only so far): the Pen | Cut project mode, hatch fills left out in cut mode,
-    knife settings in a Cutting tab, and a Cut job summary instead of a download. The plan for the rest (knife-path
-    compensation, cut G-code, simulator knife mode, calibration, design-side changes) is in `docs/cutting.md`.
+26. Cutting (branch `cutting`): a cut layer (one per project, always last) is cut with a drag knife after a pen-to-knife
+    swap pause. Knife paths (`js/core/knife.js`: blade-offset compensation with swivel arcs, overcut, inside-first
+    order) are built by `GCode.cutPlan`, shared with the simulator. The simulator switches to the knife at
+    `; PP_TOOL knife`. Calibrate has Cut depth, Blade offset and a knife Offset finder. The tool-down floor is now at
+    least 1 mm for both tools. Details, and what still needs real cuts to settle: `docs/cutting.md`.
 
 ---
 

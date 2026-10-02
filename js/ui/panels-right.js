@@ -273,18 +273,25 @@
       const i = S.project.layers.indexOf(L), last = S.project.layers.length - 1;
       let pop = null;
       const item = (label, fn, opts = {}) => h('button', { class: 'menu-item' + (opts.danger ? ' danger' : ''), disabled: opts.disabled, onclick: () => { if (pop) pop.close(); fn(); } }, label);
-      const minZ = U.round(PP.GCode.minSafeDrawZ(p), 2), maxZ = U.round(p.zLift - 0.5, 2);
+      // the cut layer (knife) is plotted last: it can't move, and nothing moves below it
+      const cut = L.tool === 'cut';
+      const lastPen = S.project.layers.some(l => l.tool === 'cut') ? last - 1 : last;
+      const tp = cut ? PP.GCode.knifeProfile(p) : p; // the knife's height and speed stand in for the pen's
+      const minZ = U.round(PP.GCode.minSafeDrawZ(tp), 2), maxZ = U.round(p.zLift - 0.5, 2);
       const content = h('div', { class: 'menu' },
         item('Rename', () => startRename(L.id)),
         item(L.locked ? 'Unlock layer' : 'Lock layer', () => S.updateLayer(L.id, { locked: !L.locked })),
-        item('Move up (plot earlier)', () => S.moveLayer(L.id, -1), { disabled: i <= 0 }),
-        item('Move down (plot later)', () => S.moveLayer(L.id, 1), { disabled: i >= last }),
+        item('Move up (plot earlier)', () => S.moveLayer(L.id, -1), { disabled: cut || i <= 0 }),
+        item('Move down (plot later)', () => S.moveLayer(L.id, 1), { disabled: cut || i >= lastPen }),
+        item(cut ? 'Use as a pen layer' : 'Use as the cut layer (knife, plotted last)', () => S.updateLayer(L.id, { tool: cut ? 'pen' : 'cut' })),
         h('div', { class: 'menu-sep' }),
-        h('div', { class: 'menu-label' }, 'This pen only'),
+        h('div', { class: 'menu-label' }, cut ? 'This knife only' : 'This pen only'),
         h('div', { class: 'menu-fields' },
-          UI.numberField({ label: 'Pen height (Z)', unit: 'mm', value: U.isNum(L.zDraw) ? L.zDraw : '', placeholder: String(p.zDraw), min: minZ, max: maxZ, step: 0.1, allowEmpty: true, title: 'Empty = the printer value (' + p.zDraw + ' mm). Allowed ' + minZ + '..' + maxZ + ' mm.', onChange: (v) => S.updateLayer(L.id, { zDraw: v === null ? null : PP.GCode.safeDrawZ(p, v) }) }),
-          UI.numberField({ label: 'Draw speed', unit: 'mm/s', value: U.isNum(L.speed) ? L.speed : '', placeholder: String(p.drawSpeed), min: 1, max: 500, step: 1, allowEmpty: true, title: 'Empty = the printer value (' + p.drawSpeed + ' mm/s)', onChange: (v) => S.updateLayer(L.id, { speed: v }) }),
-          UI.numberField({ label: 'Line width on screen', unit: 'mm', value: L.penWidth || 0.5, min: 0.05, max: 5, step: 0.05, decimals: 2, onChange: (v) => S.updateLayer(L.id, { penWidth: v }) })),
+          UI.numberField({ label: cut ? 'Knife height (Z-Cut)' : 'Pen height (Z)', unit: 'mm', value: U.isNum(L.zDraw) ? L.zDraw : '', placeholder: String(tp.zDraw), min: minZ, max: maxZ, step: 0.1, allowEmpty: true, title: 'Empty = the printer value (' + tp.zDraw + ' mm). Allowed ' + minZ + '..' + maxZ + ' mm.', onChange: (v) => S.updateLayer(L.id, { zDraw: v === null ? null : PP.GCode.safeDrawZ(tp, v) }) }),
+          UI.numberField({ label: cut ? 'Cut speed' : 'Draw speed', unit: 'mm/s', value: U.isNum(L.speed) ? L.speed : '', placeholder: String(tp.drawSpeed), min: 1, max: 500, step: 1, allowEmpty: true, title: 'Empty = the printer value (' + tp.drawSpeed + ' mm/s)', onChange: (v) => S.updateLayer(L.id, { speed: v }) }),
+          cut ? UI.checkField({ label: 'Mirror (iron-on vinyl)', value: !!L.mirror, onChange: (v) => S.updateLayer(L.id, { mirror: v }) }) : null,
+          cut ? UI.checkField({ label: 'Weed box around the design', value: !!L.weedBox, onChange: (v) => S.updateLayer(L.id, { weedBox: v }) }) : null,
+          cut ? null : UI.numberField({ label: 'Line width on screen', unit: 'mm', value: L.penWidth || 0.5, min: 0.05, max: 5, step: 0.05, decimals: 2, onChange: (v) => S.updateLayer(L.id, { penWidth: v }) })),
         h('div', { class: 'menu-sep' }),
         item('Delete layer', () => deleteLayer(L), { danger: true }));
       pop = UI.popover(anchor, content, { align: 'right' });
@@ -310,12 +317,13 @@
         color.addEventListener('change', () => { recoloring = false; if (busy === 'color:' + L.id) busy = null; renderSoon(); });
         color.addEventListener('blur', () => { if (busy === 'color:' + L.id) { recoloring = false; busy = null; renderSoon(); } });
         const name = h('span', { class: 'layer-name', title: 'Double-click to rename' }, L.name);
+        const knife = L.tool === 'cut' ? h('span', { class: 'layer-tool', title: 'Cut layer: cut with the knife, after every pen' }, UI.icon('knife', 14)) : null;
         name.addEventListener('dblclick', () => startRename(L.id));
         const lockB = L.locked ? UI.iconBtn('lock', 'Locked - click to unlock', (e) => { e.stopPropagation(); S.updateLayer(L.id, { locked: false }); }, { size: 14, cls: 'on' }) : null;
         const eye = UI.iconBtn(L.visible ? 'eye' : 'eyeoff', L.visible ? 'Hide (hidden layers are not plotted)' : 'Show', (e) => { e.stopPropagation(); S.updateLayer(L.id, { visible: !L.visible }); }, { size: 15, cls: L.visible ? '' : 'off' });
         const more = UI.iconBtn('more', 'Layer options', (e) => { e.stopPropagation(); layerMenu(more, L); }, { size: 15 });
         const row = h('div', { class: 'layer-row' + (active ? ' active' : '') + (L.visible ? '' : ' is-hidden'), dataset: { layer: L.id } },
-          grip, color, name, lockB, h('span', { class: 'layer-count', title: 'Objects on this layer' }, String(counts.get(L.id) || 0)), eye, more);
+          grip, color, knife, name, lockB, h('span', { class: 'layer-count', title: 'Objects on this layer' }, String(counts.get(L.id) || 0)), eye, more);
 
         // drag the grip to reorder (layer order = plot order)
         grip.addEventListener('pointerdown', () => { row.draggable = true; });

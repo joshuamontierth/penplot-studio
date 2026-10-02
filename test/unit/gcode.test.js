@@ -110,7 +110,7 @@ describe('validateProfile', () => {
   const invalid = (patch) => GC.validateProfile(GC.normalizeProfile({ ...X1C, ...patch }));
   it.each([
     ['Z-Lift less than 1 mm above Z-Draw', { zLift: 14.5 }, /Z-Lift/],
-    ['Z-Draw below 0.2 mm', { zDraw: 0.1, zLift: 5 }, /Z-Draw/],
+    ['Z-Draw below 1 mm', { zDraw: 0.8, zLift: 5 }, /Z-Draw/],
     ['attach height below Z-Lift', { zAttach: 15 }, /Attach height/],
     ['a height above Z max', { zEnd: 300 }, /maximum Z/],
     ['zero speed', { drawSpeed: 0 }, /Speeds/],
@@ -124,10 +124,10 @@ describe('validateProfile', () => {
 });
 
 describe('pen-down safe window (HANDOFF §4.4)', () => {
-  it('minSafeDrawZ = max(zDraw − 4, zDraw / 2, 0.5)', () => {
+  it('minSafeDrawZ = max(zDraw − 4, zDraw / 2, 1): never under the plate-scrape limit', () => {
     expect(GC.minSafeDrawZ({ zDraw: 14 })).toBe(10);
     expect(GC.minSafeDrawZ({ zDraw: 6 })).toBe(3);
-    expect(GC.minSafeDrawZ({ zDraw: 0.6 })).toBe(0.5);
+    expect(GC.minSafeDrawZ({ zDraw: 1.6 })).toBe(1);
   });
 
   it('safeDrawZ clamps into [minSafeDrawZ, zLift − 0.5]', () => {

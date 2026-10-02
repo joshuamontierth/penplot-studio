@@ -53,9 +53,10 @@
     return out;
   }
   /** The G-code must draw exactly the planned strokes (same order, same points). */
-  function strokesMatchPlan(sim, jobs) {
+  /** P: the profile, needed for cut jobs - their strokes are the knife paths build() writes (GCode.cutPlan). */
+  function strokesMatchPlan(sim, jobs, P) {
     const plan = [];
-    for (const j of jobs) for (const q of j.polys) if (q.length >= 4) plan.push(q);
+    for (const j of jobs) for (const q of (j.tool === 'cut' && P ? GC.cutPlan(P, j).polys : j.polys)) if (q.length >= 4) plan.push(q);
     if (sim.strokes.length !== plan.length) return 'stroke count ' + sim.strokes.length + ' vs plan ' + plan.length;
     // Ordered alignment: every G-code point must match the next planned point (within the
     // 0.001 mm rounding of the file); planned points may only be skipped when they round
@@ -316,6 +317,8 @@
       if (rng() < 0.2) L.speed = 5 + rng() * 150;
       if (rng() < 0.08) L.visible = false;
     });
+    // a quarter of the scenes end with a cut layer (drag knife), sometimes mirrored or with a weed box
+    if (rng() < 0.25) S.updateLayer(S.project.layers[S.project.layers.length - 1].id, { tool: 'cut', mirror: rng() < 0.3, weedBox: rng() < 0.3 }, { history: false });
     const objs = [];
     const n = 1 + Math.floor(rng() * 5);
     for (let i = 0; i < n; i++) {
@@ -338,7 +341,8 @@
       p.penOffsetX = rnd(-45, 45); p.penOffsetY = rnd(-45, 45); p.margin = rnd(0, 8);
       const W = p.bedWidth, D = p.bedDepth;
       p.nozzleMinX = rnd(0, 60); p.nozzleMaxX = rnd(W - 70, W); p.nozzleMinY = rnd(0, 70); p.nozzleMaxY = rnd(D - 70, D);
-      p.zDraw = rnd(2, 25); p.zLift = p.zDraw + rnd(1, 10); p.zAttach = Math.min(240, p.zLift + rnd(0, 60)); p.zEnd = Math.min(240, p.zLift + rnd(0, 80));
+      p.zDraw = rnd(2, 25); p.zLift = p.zDraw + rnd(1, 10); p.zCut = p.zLift - rnd(1, Math.min(8, p.zLift - 0.2));
+      p.bladeOffset = rnd(0, 0.6); p.overcut = rnd(0, 2); p.swivelAngle = rnd(0, 60); p.cutPasses = 1 + Math.floor(rng() * 2); p.cutSpeed = rnd(5, 60); p.zAttach = Math.min(240, p.zLift + rnd(0, 60)); p.zEnd = Math.min(240, p.zLift + rnd(0, 80));
       p.drawSpeed = rnd(5, 150); p.travelSpeed = rnd(50, 450); p.zSpeed = rnd(3, 25); p.accel = rng() < 0.2 ? 0 : rnd(500, 10000);
       p.penDownDelay = rng() < 0.3 ? 0 : rnd(0, 300); p.penUpDelay = rng() < 0.7 ? 0 : rnd(0, 100);
       p.pauseForAttach = rng() < 0.9; p.layerPause = rng() < 0.8; p.endPause = rng() < 0.6; p.safeStart = rng() < 0.6; p.progress = rng() < 0.8;
@@ -392,13 +396,14 @@
     /** Full pipeline check for the current Store content. */
     function checkPipeline(name, profile, prefs, opts = {}) {
       const P = GC.normalizeProfile(profile);
-      const Rr = GC.reachableRect(P);
+      const Rp = GC.reachableRect(P);
       const t0 = performance.now();
       mark(name + ' :: plan');
       const plan = App.buildPlan({ profile: P, prefs });
       mark(name + ' :: build (' + plan.jobs.reduce((s, j) => s + j.polys.length, 0) + ' paths)');
       let planOk = true;
       for (const j of plan.jobs) for (const q of j.polys) {
+        const Rr = j.tool === 'cut' ? GC.cutRect(P) : Rp; // the blade tip stays where the knife can cut
         for (let k = 0; k < q.length; k += 2) {
           if (!isFinite(q[k]) || !isFinite(q[k + 1]) || q[k] < Rr.minX - 1e-6 || q[k] > Rr.maxX + 1e-6 || q[k + 1] < Rr.minY - 1e-6 || q[k + 1] > Rr.maxY + 1e-6) { planOk = false; break; }
         }
@@ -412,11 +417,15 @@
       stats.files++; stats.moves += sim.stats.moves; stats.strokes += sim.stats.penDowns; stats.drawM += sim.stats.drawLen / 1000;
       if (!ok(sim.ok, name + ' simulation', sim.errors.map(SIM.fmtMsg).join(' | '))) { if (!R.firstBad) R.firstBad = { sim, P, name }; }
       else R.lastGood = { sim, P, name };
-      const m = strokesMatchPlan(sim, plan.jobs);
+      const m = strokesMatchPlan(sim, plan.jobs, P);
       ok(m === null, name + ' G-code draws exactly the plan', m);
       if (opts.fidelity !== false) {
         mark(name + ' :: fidelity');
-        const f = fidelity(designPolys(), Rr, sim.strokes, prefs);
+        // pen layers only: the cut layer's strokes are knife paths (offset, mirrored, weed box) and are matched
+        // exactly against GCode.cutPlan above; the knife geometry itself is unit-tested (test/unit/knife.test.js)
+        const cutIdx = plan.jobs.findIndex(j => j.tool === 'cut');
+        const penStrokes = cutIdx < 0 ? sim.strokes : sim.strokes.filter(st => st.layer !== cutIdx);
+        const f = fidelity(designPolys(L => L.tool !== 'cut'), Rp, penStrokes, prefs);
         if (f.skipped) { stats.fidelitySkipped = (stats.fidelitySkipped || 0) + 1; log('   ' + name + ': fidelity skipped (' + (f.total / 1000).toFixed(0) + ' m of line)'); }
         ok(f.covMiss === 0, name + ' coverage (design fully drawn)', f.covMiss + '/' + f.covPts + ' samples missed, worst ' + f.covWorst.toFixed(3) + ' mm');
         ok(f.precMiss === 0, name + ' precision (nothing extra drawn)', f.precMiss + '/' + f.precPts + ' samples off-design, worst ' + f.precWorst.toFixed(3) + ' mm');
@@ -643,7 +652,7 @@
     R.calibrationCases = function () {
       return GC.BUILTIN_PROFILES.map(bp => ({ name: 'calibration on ' + bp.name, run() {
         const P = GC.normalizeProfile(bp);
-        for (const type of ['grid', 'compact', 'frame']) {
+        for (const type of ['grid', 'compact', 'frame', 'cutdepth', 'bladeoffset']) {
           let cal;
           const zValues = [P.zDraw - 2, P.zDraw - 1, P.zDraw, P.zDraw + 1, P.zDraw + 2, P.zDraw + 3, P.zDraw + 9];
           try { cal = GC.calibrationJobs(P, { type, zValues, speeds: [20, 40, 60], cell: 14 }); }
@@ -651,8 +660,8 @@
           const res = GC.build(cal.jobs, P, {});
           const sim = SIM.check(res.text, P, cal.jobs);
           ok(sim.ok, 'calibration ' + type + ' on ' + bp.name, sim.errors.map(SIM.fmtMsg).join(' | '));
-          ok(strokesMatchPlan(sim, cal.jobs) === null, 'calibration ' + type + ' strokes match', strokesMatchPlan(sim, cal.jobs));
-          if (type !== 'frame') ok(sim.stats.maxZ <= P.zMax + 1e-6 && sim.stats.minDrawZ >= GC.minSafeDrawZ(P) - 1e-6 && sim.stats.minDrawZ >= 0.5, 'calibration ' + type + ' Z range safe on ' + bp.name, 'pen-down min ' + sim.stats.minDrawZ + ', max Z ' + sim.stats.maxZ);
+          ok(strokesMatchPlan(sim, cal.jobs, P) === null, 'calibration ' + type + ' strokes match', strokesMatchPlan(sim, cal.jobs, P));
+          if (type !== 'frame') ok(sim.stats.maxZ <= P.zMax + 1e-6 && sim.stats.minDrawZ >= GC.minSafeDrawZ(type === 'cutdepth' || type === 'bladeoffset' ? GC.knifeProfile(P) : P) - 1e-6 && sim.stats.minDrawZ >= 0.5, 'calibration ' + type + ' Z range safe on ' + bp.name, 'pen-down min ' + sim.stats.minDrawZ + ', max Z ' + sim.stats.maxZ);
         }
         const of = GC.offsetFinder(P);
         const s = SIM.simulate(of.text, P, { expectedPauses: 2 });
@@ -743,7 +752,7 @@
       const plan = App.buildPlan({ profile: P, prefs });
       const res = GC.build(plan.jobs, P, {});
       const sim = SIM.check(res.text, P, plan.jobs);
-      return { P, prefs, plan, res, sim, mismatch: strokesMatchPlan(sim, plan.jobs) };
+      return { P, prefs, plan, res, sim, mismatch: strokesMatchPlan(sim, plan.jobs, P) };
     };
 
     return R;

@@ -49,7 +49,7 @@
         h('div', { class: 'row' }, UI.btn('Download pen mount', () => UI.openPenHolder(), { icon: 'download' }))]],
       ['Z heights', () => [
         h('div', { class: 'grid2' },
-          F('zDraw', 'Z-Draw (pen down)', 'mm', { step: 0.1, decimals: 2, min: 0.2 }),
+          F('zDraw', 'Z-Draw (pen down)', 'mm', { step: 0.1, decimals: 2, min: 1 }),
           F('zLift', 'Z-Lift (pen up / travel)', 'mm', { step: 0.1, decimals: 2, min: 0.5 }),
           F('zAttach', 'Attach / pen-change height', 'mm', { step: 1, min: 1 }),
           F('zEnd', 'End height', 'mm', { step: 1, min: 1 }),
@@ -96,7 +96,7 @@
           F('knifeOffsetX', 'Knife offset X (right +, left -)', 'mm', { step: 0.1, decimals: 2 }),
           F('knifeOffsetY', 'Knife offset Y (back +, front -)', 'mm', { step: 0.1, decimals: 2 }),
           F('bladeOffset', 'Blade offset', 'mm', { step: 0.05, decimals: 2, min: 0, max: 2 }),
-          F('zCut', 'Z-Cut (knife down)', 'mm', { step: 0.1, decimals: 2, min: 0.2 }),
+          F('zCut', 'Z-Cut (knife down)', 'mm', { step: 0.1, decimals: 2, min: 1 }),
           F('cutSpeed', 'Cut speed', 'mm/s', { min: 1, max: 200 }),
           F('overcut', 'Overcut', 'mm', { step: 0.1, decimals: 1, min: 0, max: 5 }),
           F('swivelAngle', 'Swivel at corners sharper than', '°', { min: 0, max: 90 }),
@@ -200,52 +200,26 @@
   // ---------------------------------------------------------------------------
   // G-code export
   // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // Cut job (cutting mode): what the knife would cut. There is no cutting G-code yet (docs/cutting.md).
-  // ---------------------------------------------------------------------------
-  UI.openCutJob = function () {
-    const App = PP.App;
-    const plan = App.buildPlan();
-    const p = plan.profile;
-    if (!plan.jobs.length) { UI.toast(App.emptyPlanMessage(plan), 'warn'); return; }
-    let closed = 0, open = 0, len = 0, smallest = Infinity;
-    for (const j of plan.jobs) {
-      for (const poly of j.polys) {
-        const n = poly.length;
-        let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
-        for (let k = 0; k < n; k += 2) {
-          if (k) len += Math.hypot(poly[k] - poly[k - 2], poly[k + 1] - poly[k - 1]);
-          mnx = Math.min(mnx, poly[k]); mxx = Math.max(mxx, poly[k]); mny = Math.min(mny, poly[k + 1]); mxy = Math.max(mxy, poly[k + 1]);
-        }
-        if (n >= 8 && Math.hypot(poly[0] - poly[n - 2], poly[1] - poly[n - 1]) < 0.05) {
-          closed++;
-          smallest = Math.min(smallest, Math.max(mxx - mnx, mxy - mny));
-        } else open++;
-      }
+  // What the knife will and won't do with the cut layer (docs/cutting.md)
+  const ONE_STROKE = new Set(['hjson', 'svgfont', 'hand']);
+  function cutNotes(job) {
+    const notes = [];
+    let open = 0, smallest = Infinity;
+    for (const q of job.polys) {
+      if (!PP.Knife.isClosed(q)) { open++; continue; }
+      let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+      for (let i = 0; i < q.length; i += 2) { mnx = Math.min(mnx, q[i]); mxx = Math.max(mxx, q[i]); mny = Math.min(mny, q[i + 1]); mxy = Math.max(mxy, q[i + 1]); }
+      smallest = Math.min(smallest, Math.max(mxx - mnx, mxy - mny));
     }
-    const passes = Math.max(1, Math.round(p.cutPasses || 1));
-    const fills = S.project.objects.filter(o => o.fill && o.fill.enabled).length;
-    const card = (label, value, sub) => h('div', { class: 'xcard' }, h('span', null, label), h('b', null, value), sub ? h('small', null, sub) : null);
-    const warn = (kind, text) => h('div', { class: 'warn-item ' + kind }, UI.icon(kind === 'ok' ? 'check' : 'warn', 14), h('span', null, text));
-    const notes = h('div', { class: 'warns' },
-      open ? warn('warn', open + ' open path' + (open === 1 ? '' : 's') + ': cut as a line, no piece comes free.') : null,
-      fills ? warn('warn', fills + ' hatch fill' + (fills === 1 ? ' is' : 's are') + ' left out: only outlines are cut.') : null,
-      smallest < 3 ? warn('warn', 'The smallest piece is ' + U.fmt(smallest, 1) + ' mm: small pieces are hard to cut and weed.') : null,
-      warn('warn', 'Put a cutting mat under the material: the knife will score the build plate.'),
-      warn('error', 'Cutting G-code is not generated yet.'));
-    const body = h('div', { class: 'export' },
-      h('div', { class: 'export-summary' },
-        card('Closed shapes', String(closed), 'pieces that come free'),
-        card('Open paths', String(open)),
-        card('Cut length', U.formatLength(len * passes), passes > 1 ? passes + ' passes' : '1 pass'),
-        card('Est. time', U.formatDuration(len * passes / p.cutSpeed + 45), 'at ' + p.cutSpeed + ' mm/s')),
-      h('div', { class: 'kv' },
-        kv('Knife offset', p.knifeSameAsPen ? 'same as the pen' : 'X' + p.knifeOffsetX + '  Y' + p.knifeOffsetY + ' mm'),
-        kv('Blade offset', p.bladeOffset + ' mm'), kv('Z-Cut', p.zCut + ' mm'), kv('Overcut', p.overcut + ' mm'),
-        kv('Swivel corners over', p.swivelAngle + '°')),
-      notes);
-    UI.modal({ title: 'Cut job', body, wide: true, footer: [h('span', { class: 'hspacer' }), UI.btn('Printer settings', () => UI.openPrinterSettings(), { icon: 'settings' })] });
-  };
+    const objs = S.project.objects.filter(o => o.layerId === job.layerId);
+    if (objs.some(o => o.type === 'text' && PP.Fonts.get(o.font) && ONE_STROKE.has(PP.Fonts.get(o.font).source.type)))
+      notes.push('Text on the cut layer uses a one-stroke font: it cuts lines, not letters. Use an installed or uploaded font.');
+    if (open) notes.push(open + ' open path' + (open === 1 ? '' : 's') + ' on the cut layer: cut as a line, no piece comes free.');
+    if (smallest < 3) notes.push('The smallest piece on the cut layer is ' + U.fmt(smallest, 1) + ' mm: small pieces are hard to cut and weed.');
+    if (objs.some(o => o.fill && o.fill.enabled)) notes.push('Hatch fills on the cut layer are left out: the knife cuts outlines only.');
+    notes.push('Cut on a cutting mat: the knife scores the build plate.');
+    return notes;
+  }
 
   UI.openExport = function () {
     if (PP.Preview.active) PP.Preview.stop();
@@ -276,6 +250,8 @@
     const warnBox = h('div', { class: 'warns' });
     if (plan.clipped) warnBox.appendChild(h('div', { class: 'warn-item warn' }, UI.icon('warn', 14), h('span', null, 'Parts of the design are outside the drawable area and were clipped.')));
     errs.forEach(e => warnBox.appendChild(h('div', { class: 'warn-item error' }, UI.icon('warn', 14), h('span', null, e))));
+    const cutJob = plan.jobs.find(j => j.tool === 'cut');
+    if (cutJob) cutNotes(cutJob).forEach(w => warnBox.appendChild(h('div', { class: 'warn-item warn' }, UI.icon('warn', 14), h('span', null, w))));
 
     const modeSeg = UI.segmented({
       options: [{ value: 'combined', label: 'One file (pause for pen change)' }, { value: 'split', label: 'One file per layer' }],
@@ -286,7 +262,7 @@
     const codeView = h('textarea', { class: 'code code-view', rows: 12, readonly: true, spellcheck: 'false' });
     let lastText = '';
 
-    function makeJob(j) { return { name: j.name, color: j.color, polys: j.polys, zDraw: j.zDraw, drawSpeed: j.drawSpeed }; }
+    function makeJob(j) { return { name: j.name, color: j.color, polys: j.polys, zDraw: j.zDraw, drawSpeed: j.drawSpeed, tool: j.tool }; }
     function gen(jobs) {
       return PP.GCode.build(jobs, p, { dryRun: dry, title: S.project.name });
     }
@@ -330,7 +306,8 @@
         h('li', null, 'Tape the paper down where the canvas shows it. Do ', h('b', null, 'not'), ' attach the pen holder yet.'),
         h('li', null, 'On the printer screen: ', h('b', null, 'Print files → SD card'), ' → pick the file → Print.'),
         h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? (p.purgeChute ? ' While paused the firmware moves the toolhead to the purge chute (back left), and the nozzle is warm' + (p.pauseTemp > 0 ? ' (held at ' + p.pauseTemp + ' °C so Resume does not wait for it to cool)' : ' (about 90 °C)') + ' - do not touch it.' + (p.pauseTemp > 0 ? '' : ' On Resume it waits about a minute, then returns.') : ' The nozzle can warm up while paused - do not touch it.') : null),
-        p.pauseForAttach ? h('li', null, 'Clip the pen holder onto the toolhead, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '.') : null,
+        p.pauseForAttach ? h('li', null, plan.jobs[0].tool === 'cut' && mode === 'combined' ? 'Clip the knife holder onto the toolhead (the material on a cutting mat), check the blade depth, then press ' : 'Clip the pen holder onto the toolhead, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '.') : null,
+        cutJob && plan.jobs.length > 1 && mode === 'combined' ? h('li', null, 'Before the cut layer the printer pauses: swap the pen holder for the knife holder, then press ', h('b', null, 'Resume'), '.') : null,
         plan.jobs.length > 1 && mode === 'combined' && p.layerPause ? h('li', null, 'Between layers the printer pauses again: swap to the next pen color and press Resume.') : null,
         p.endPause
           ? h('li', null, 'At the end the bed lowers and the printer pauses one last time: ', h('b', null, 'remove the pen holder'), ', then press Resume to finish. Never let a normal 3D print start with the module attached.')
@@ -366,8 +343,11 @@
     try { await PP.Fonts.load(PP.Fonts.DEFAULT); } catch (e) { UI.toast('Could not load the font for the calibration labels.', 'warn'); }
     // Default range covers both the Instructables (Z 14) and the mount designer (Z 17) contact heights
     const defStart = () => U.round(p.zDraw - 2, 2), defEnd = () => U.round(Math.min(p.zDraw + 3, p.zLift - 1), 2);
-    const st = Object.assign({ zStart: defStart(), zEnd: defEnd(), zStep: 1, speeds: '20, 30, 45, 60', cell: 16 }, PP.Storage.getLocal('calib', {}));
+    const st = Object.assign({ zStart: defStart(), zEnd: defEnd(), zStep: 1, speeds: '20, 30, 45, 60', cell: 16, offsets: '0, 0.15, 0.25, 0.35, 0.5', offsetKnife: false }, PP.Storage.getLocal('calib', {}));
     if (st.forZ !== p.zDraw + '/' + p.zLift) { st.zStart = defStart(); st.zEnd = defEnd(); st.zStep = 1; st.forZ = p.zDraw + '/' + p.zLift; }
+    // the knife's depth ladder has its own Z range, around Z-Cut
+    if (st.forCutZ !== p.zCut + '/' + p.zLift) { st.cZStart = U.round(p.zCut - 1.5, 2); st.cZEnd = U.round(Math.min(p.zCut + 1.5, p.zLift - 1), 2); st.cZStep = 0.5; st.forCutZ = p.zCut + '/' + p.zLift; }
+    const zKey = (k) => (cur === 'cutdepth' ? 'c' + k[0].toUpperCase() + k.slice(1) : k);
     let cur = type || st.type || 'frame';
     let result = null;
     const canvas = h('canvas', { class: 'calib-canvas', width: 640, height: 400 });
@@ -376,13 +356,19 @@
 
     // same order as Help → Calibration
     const typeSeg = UI.segmented({
-      options: [{ value: 'frame', label: '1 Frame' }, { value: 'offset', label: '2 Offset finder' }, { value: 'compact', label: 'Z test' }, { value: 'grid', label: 'Z × speed' }],
-      value: cur, onChange: (v) => { cur = v; st.type = v; save(); dryCb.setValue(v === 'frame'); refresh(); },
+      options: [{ value: 'frame', label: '1 Frame' }, { value: 'offset', label: '2 Offset finder' }, { value: 'compact', label: 'Z test' }, { value: 'grid', label: 'Z × speed' }, { value: 'cutdepth', label: 'Cut depth' }, { value: 'bladeoffset', label: 'Blade offset' }],
+      value: cur, onChange: (v) => { cur = v; st.type = v; save(); dryCb.setValue(v === 'frame'); syncZ(); refresh(); },
     });
     const save = () => PP.Storage.setLocal('calib', st);
-    const zs = UI.numberField({ label: 'Z from', unit: 'mm', value: st.zStart, step: 0.1, decimals: 2, onChange: (v) => { st.zStart = v; save(); refresh(); } });
-    const ze = UI.numberField({ label: 'Z to', unit: 'mm', value: st.zEnd, step: 0.1, decimals: 2, onChange: (v) => { st.zEnd = v; save(); refresh(); } });
-    const zst = UI.numberField({ label: 'Z step', unit: 'mm', value: st.zStep, min: 0.05, max: 5, step: 0.05, decimals: 2, onChange: (v) => { st.zStep = v; save(); refresh(); } });
+    const zs = UI.numberField({ label: 'Z from', unit: 'mm', value: st[zKey('zStart')], step: 0.1, decimals: 2, onChange: (v) => { st[zKey('zStart')] = v; save(); refresh(); } });
+    const ze = UI.numberField({ label: 'Z to', unit: 'mm', value: st[zKey('zEnd')], step: 0.1, decimals: 2, onChange: (v) => { st[zKey('zEnd')] = v; save(); refresh(); } });
+    const zst = UI.numberField({ label: 'Z step', unit: 'mm', value: st[zKey('zStep')], min: 0.05, max: 5, step: 0.05, decimals: 2, onChange: (v) => { st[zKey('zStep')] = v; save(); refresh(); } });
+    const syncZ = () => { zs.setValue(st[zKey('zStart')]); ze.setValue(st[zKey('zEnd')]); zst.setValue(st[zKey('zStep')]); };
+    const offIn = h('input', { value: st.offsets, spellcheck: 'false' });
+    offIn.addEventListener('change', () => { st.offsets = offIn.value; save(); refresh(); });
+    offIn.addEventListener('keydown', (e) => e.stopPropagation());
+    const offsetsField = h('div', { class: 'field' }, h('label', null, 'Blade offsets (mm, comma separated)'), offIn);
+    const knifeCb = UI.checkField({ label: 'With the knife (for the knife offset)', value: !!st.offsetKnife, onChange: (v) => { st.offsetKnife = v; save(); refresh(); } });
     const cell = UI.numberField({ label: 'Cell size', unit: 'mm', value: st.cell, min: 8, max: 40, step: 1, onChange: (v) => { st.cell = v; save(); refresh(); } });
     const spIn = h('input', { value: st.speeds, spellcheck: 'false' });
     spIn.addEventListener('change', () => { st.speeds = spIn.value; save(); refresh(); });
@@ -394,7 +380,8 @@
 
     function zValues() {
       const out = [];
-      const a = Math.min(st.zStart, st.zEnd), b = Math.max(st.zStart, st.zEnd), s = Math.max(0.05, st.zStep);
+      const z0 = st[zKey('zStart')], z1 = st[zKey('zEnd')];
+      const a = Math.min(z0, z1), b = Math.max(z0, z1), s = Math.max(0.05, st[zKey('zStep')]);
       for (let z = a; z <= b + 1e-9 && out.length < 30; z += s) out.push(U.round(z, 3));
       return out;
     }
@@ -402,18 +389,22 @@
     function refresh() {
       U.clear(err); U.clear(legend);
       opts.style.display = cur === 'frame' || cur === 'offset' ? 'none' : '';
+      [zs, ze, zst].forEach(el => { el.style.display = cur === 'bladeoffset' ? 'none' : ''; });
       speedField.style.display = cur === 'grid' ? '' : 'none';
+      offsetsField.style.display = cur === 'bladeoffset' ? '' : 'none';
+      knifeCb.style.display = cur === 'offset' ? '' : 'none';
       dryCb.style.display = cur === 'offset' ? 'none' : '';
       const speeds = String(st.speeds).split(/[,\s]+/).map(parseFloat).filter(v => v > 0).slice(0, 8);
+      const offsets = String(st.offsets).split(/[,\s]+/).map(parseFloat).filter(v => v >= 0).slice(0, 10);
       try {
         if (cur === 'offset') {
-          const of = PP.GCode.offsetFinder(p);
-          const cross = [[of.nozzle.x - 8 + p.penOffsetX, of.nozzle.y + p.penOffsetY, of.nozzle.x + 8 + p.penOffsetX, of.nozzle.y + p.penOffsetY],
-            [of.nozzle.x + p.penOffsetX, of.nozzle.y - 8 + p.penOffsetY, of.nozzle.x + p.penOffsetX, of.nozzle.y + 8 + p.penOffsetY],
-            PP.Geo.translate([PP.Geo.ellipse(4, 4)], of.nozzle.x + p.penOffsetX, of.nozzle.y + p.penOffsetY)[0]];
+          const of = PP.GCode.offsetFinder(p, { tool: st.offsetKnife ? 'cut' : 'pen' });
+          const tp = st.offsetKnife ? PP.GCode.knifeProfile(p) : p;
+          const cx = of.nozzle.x + tp.penOffsetX, cy = of.nozzle.y + tp.penOffsetY;
+          const cross = [[cx - 8, cy, cx + 8, cy], [cx, cy - 8, cx, cy + 8], PP.Geo.translate([PP.Geo.ellipse(4, 4)], cx, cy)[0]];
           result = { jobs: [{ name: 'Cross', polys: cross }], legend: of.legend, offset: of, nozzle: of.nozzle };
         } else {
-          result = PP.GCode.calibrationJobs(p, { type: cur, zValues: zValues(), speeds, cell: st.cell });
+          result = PP.GCode.calibrationJobs(p, { type: cur, zValues: zValues(), speeds, offsets, cell: cur === 'cutdepth' || cur === 'bladeoffset' ? Math.min(st.cell, 20) : st.cell });
         }
         result.legend.forEach(l => legend.appendChild(h('li', null, l)));
       } catch (e) {
@@ -463,14 +454,14 @@
         sim = PP.GSim.check(text, p, result.jobs, { dryRun: dryCb.input.checked, keepMoves: false });
       }
       if (!sim.ok && !(await UI.confirm('Safety check failed', 'The simulator found problems: ' + sim.errors.map(PP.GSim.fmtMsg).join(' | ') + '. Download anyway?', 'Download anyway', true))) return;
-      const name = 'calibration_' + cur + (dryCb.input.checked && cur !== 'offset' ? '_DRYRUN' : '') + '.gcode';
+      const name = 'calibration_' + cur + (cur === 'offset' && st.offsetKnife ? '_knife' : '') + (dryCb.input.checked && cur !== 'offset' ? '_DRYRUN' : '') + '.gcode';
       let r;
       try { r = await U.saveFiles([{ name, data: text, type: 'text/x-gcode' }]); } catch (e) { UI.toast('Could not save ' + name + ': ' + e.message, 'error'); return; }
       if (r) UI.toast('Saved ' + name + U.savedTo(r) + ' (' + U.formatDuration(secs) + ') - safety check ' + (sim.ok ? 'passed' : 'FAILED'), sim.ok ? 'info' : 'warn');
     };
 
     const body = h('div', { class: 'calib' },
-      h('div', { class: 'calib-left' }, typeSeg, opts, speedField, dryCb, err, h('h3', null, 'How to read it'), legend),
+      h('div', { class: 'calib-left' }, typeSeg, opts, speedField, offsetsField, knifeCb, dryCb, err, h('h3', null, 'How to read it'), legend),
       h('div', { class: 'calib-right' }, canvas, h('p', { class: 'hint' }, 'Preview on the bed; the gray dot is the nozzle for the offset finder. Run the file like any plot: attach the holder at the first pause.')));
     UI.modal({ title: 'Calibration', body, wide: true, footer: [UI.btn('Calibration guide', () => UI.openHelp('calibration'), { icon: 'help' }), h('span', { class: 'hspacer' }), UI.btn('Download calibration G-code', download, { primary: true, icon: 'download' })] });
     refresh();

@@ -1,126 +1,82 @@
-# Cutting with a drag knife (plan)
+# Cutting with a drag knife
 
-The `cutting` branch adds the cutting mode to the UI. Everything below is what it takes to actually cut, in a
-proposed order. The knife: AFUNTA Roland-type drag-knife blades (30°, 45° and 60°) with a blade holder. The mount is
-still open.
+Cutting works on the `cutting` branch. The design is a cut layer: one layer can use the knife instead of a pen, and it
+always plots last, after every pen layer. The knife is an AFUNTA set of Roland-type drag-knife blades (30°, 45° and
+60°) with a holder; the mount is still open. Several settings can only be settled by real cuts: see *To find out on
+the printer*.
 
-## What the branch has now
+## How it works
 
-- **A Pen | Cut switch in the header.** It's a project setting, so it's saved in `.penplot` and undoable.
-- **Outlines only in cut mode.** Hatch fills are left out of the geometry, so the canvas, the plan and the summary
-  cover outlines only (`PP.Objects.setOutlineOnly`).
-- **Hairline rendering.** The canvas draws cut lines thin, whatever the pen width.
-- **A Cutting tab in Printer settings.** Its fields are knife offset (or "same as the pen"), blade offset, Z-Cut, cut
-  speed, overcut, swivel angle and passes. They're profile fields in `js/core/gcode.js`, which `build()` doesn't use
-  yet.
-- **A Cut job dialog in place of Download G-code.** It shows:
-  - closed shapes and open paths;
-  - cut length and an estimated time;
-  - warnings: open paths, fills left out, pieces under 3 mm, and the need for a cutting mat.
-- **No preview.** It has no G-code to play yet.
+- **The cut layer.** A layer's ⋯ menu has **Use as the cut layer (knife, plotted last)**.
+  - There's only one cut layer, and the store keeps it last (`cutLast` in `js/app/state.js`).
+  - The cut layer's row shows a knife icon, and its lines draw as hairlines.
+  - Hatch fills on it are left out (`PP.Objects.setCutLayers`), because a knife cuts outlines.
+  - Its menu holds the knife height (Z-Cut) and cut speed overrides, **Mirror (iron-on vinyl)** and **Weed box around
+    the design** (3 mm margin).
+- **Printer settings → Cutting.** Profile fields, defined in `js/core/gcode.js` (`BAMBU_BASE`):
+  - knife offset (default: the knife sits where the pen does);
+  - blade offset, 0.25 mm;
+  - Z-Cut, 14 mm;
+  - cut speed, 20 mm/s;
+  - overcut, 1 mm;
+  - swivel angle, 30°;
+  - passes, 1.
+- **Knife paths.** `js/core/knife.js` handles the blade, whose tip trails the holder's axis by the blade offset:
+  - **On straight edges,** the axis runs ahead of the tip.
+  - **At sharp corners,** the axis swings around the corner on an arc while the tip pivots in place. A unit test drags a
+    modelled knife along the path and checks that a square comes out with sharp corners.
+  - **Closed shapes** start mid-edge and run past the start by the overcut, so they close fully.
+  - **Order:** open paths are cut first, then shapes from the inside out (holes before the piece around them). Paths
+    are never joined.
+- **G-code** (`build()`; `cutPlan()` is shared with the simulator):
+  - a pause to swap the pen holder for the knife holder (always, even with layer pauses off);
+  - a `; PP_TOOL knife` line, then the knife's offset, Z-Cut and cut speed;
+  - no pen dwells.
+  - A knife-only file asks you to attach the knife at the first pause.
+  - **Export:** "one file per layer" gives the cut layer its own file.
+- **Safety simulator.**
+  - After `PP_TOOL knife` it checks against the knife's offset, drawable area, heights and Z floor.
+  - It checks the strokes match the knife paths exactly.
+  - The floor for both tools is now at least 1 mm: every XY move below Z 1 scrapes the plate. The fuzz found it.
+- **Export dialog notes** for the cut layer:
+  - one-stroke fonts, which cut lines, not letters;
+  - open paths;
+  - pieces under 3 mm;
+  - fills left out;
+  - cut on a cutting mat.
+- **Calibrate** has three knife tests:
+  - **Cut depth:** squares with a triangle inside, at stepped Z-Cut values, highest (lightest) first.
+  - **Blade offset:** the same cell at several blade offsets.
+  - **Offset finder → With the knife:** cuts the cross, to measure the knife's offset.
+- **Preview** plays the knife paths too, since they're in the G-code.
+- **Tests:**
+  - knife geometry and cut G-code unit tests;
+  - a golden file, `test/unit/__snapshots__/x1c-cut.gcode`;
+  - an e2e test for the cut layer;
+  - the fuzz, where a quarter of the scenes end with a cut layer and the knife settings are randomized.
 
-## The knife
+## To find out on the printer
 
-- **Blade angles.** 45° is the usual choice for adhesive and heat-transfer vinyl. 60° is for thicker material
-  (cardstock, magnet sheet), and 30° for thin film. Confirm each against the material.
-- **Blade offset.** The tip trails the holder's axis by the blade offset, about 0.25 mm for 45° blades and more for
-  60°. The blade swivels freely, so it always points along the direction it was last dragged. Everything in
-  *Knife path* follows from that.
-- **Cutting force.** Force comes from spring compression, as with the pen. Blade exposure is set by the holder's cap:
-  just over the material's thickness, so it cuts the vinyl and not the backing (a "kiss cut").
+Starting points, to settle with real cuts. The Calibrate tests are built for these:
 
-## Mount requirements
-
-- **Rigid in X and Y, free in Z.** Any play shows up as cut error at corners. The pen mount's spring can supply the
-  force.
-- **Fits the pen mount's tube.** Roland-style holders are usually about 11.4 mm across. Measure yours: if it fits, it
-  can go in the pen mount's cartridge resized with **Download pen mount** (the spring rings need a clearance of about
-  1.2 mm).
-- **Knife offset.** The knife's offset from the nozzle has to be measured (see *Calibration*). If the holder sits in
-  the pen's cartridge it equals the pen offset, which is why the setting defaults to "same as the pen".
-
-## Knife path (the core algorithm)
-
-Without compensation, corners get rounded and closed shapes don't close. For each path:
-
-1. **Align the blade first.** After a lift the blade keeps its last direction. Track it from the previous cut and
-   swivel it toward the first segment: lower at the start point, then make an arc of radius *blade offset* around
+1. **Z-Cut.** Use the **Cut depth** test. With a spring-loaded holder, Z sets the force, and the holder's cap sets
+   the blade exposure: just over the material's thickness.
+2. **Blade offset.** Use the **Blade offset** test. The blades' angle and tip geometry decide it: 0.25 mm is typical
+   for 45°, more for 60°.
+3. **Swivel angle.** It's 30° now. Lower it if gentle corners come out rounded; raise it if curves get bumpy.
+4. **Cut speed and acceleration.** Use 20 mm/s to start. Corners overshoot at high acceleration, so a lower M204
+   for the cut layer may help.
+5. **Blade alignment at the start.** The first cut of a job assumes the blade already points along its first edge,
+   so it may start slightly rounded. If so, a short alignment cut in the waste area before the first path would fix
    it.
-2. **Extend segment ends.** Run each segment past its end by the blade offset, because the tip lags behind the axis.
-3. **Swivel at sharp corners.** At a corner sharper than the swivel angle, make an arc of radius *blade offset*
-   around the corner, from the old direction to the new one. At gentler turns the blade just follows.
-4. **Start and finish closed shapes cleanly.** Start in the middle of the longest straight segment, never at a
-   corner. Finish by cutting past the start by the overcut length, so the shape is fully closed.
-5. **Arcs as short lines.** The simulator rejects G2/G3, and the X1 handles short G1 segments well.
+6. **Knife offset.** Run the Offset finder **with the knife**.
+7. **Cutting mat thickness.** It raises the material, so redo the Z-Cut test with the mat in place.
 
-This belongs in `js/core` as pure functions, `knifePath(poly, opts) → poly`, with unit tests: a square comes back
-with four swivel arcs, a circle comes back almost unchanged.
+## Still to do
 
-## G-code
-
-- **Knife up and down.** The knife goes down to Z-Cut and up to Z-Lift as pure Z moves, the same rules as the pen.
-  Lower it a little slower than the pen.
-- **Passes.** Multiple passes repeat the path; thick material may need a slightly lower Z per pass.
-- **Speeds.** Use the cut speed (slower than drawing) and lower acceleration, so corners don't overshoot. Slow down
-  on swivels.
-- **Cut order.** Cut inner shapes before the outer ones (holes before the piece around them), so a piece doesn't
-  shift before its holes are cut. Go from small to large, nearest first within that order.
-- **Optimizer.** In cut mode it must not join separate paths, since a joined travel would cut a line. It may reverse
-  a closed path, but must keep it closed.
-- **File and dialog.** `build()` gets a cut mode: same start, pauses and end as a plot, knife paths in the body, and
-  `_CUT` in the file name. The Cut job dialog then gets the same download and safety-check flow as the G-code export.
-
-## Safety and the simulator
-
-- **Floor.** A Z-Cut floor, like the pen's minimum safe Z: the blade must not reach the mat or the plate.
-- **Drawable area.** Compensated paths are longer than the design (extensions, swivels, overcut). Check the knife
-  path against the drawable area, not just the design.
-- **A knife mode in the simulator.** Z-Cut counts as the drawing height, so knife-down moves are checked like pen
-  strokes. No XY move with the knife down except cutting moves, and travel always at Z-Lift.
-- **Build plate.** The knife scores PEI plates: always cut on a cutting mat. The Cut job dialog already warns about
-  this. The mat's thickness changes the Z values, so calibrate with it in place.
-- **Pauses.** The same as plotting: attach the knife at the first pause. Watch fingers near the blade while
-  attaching.
-
-## Calibration
-
-- **Depth ladder.** Cut a row of small squares, each with a peel tab, at stepped Z. Pick the Z that cuts through the
-  vinyl but not the backing.
-- **Blade offset test.** Cut squares and triangles with blade offsets of 0.15 to 0.5 mm, and pick the one with sharp,
-  closed corners.
-- **Knife offset.** Run the Offset finder with the knife (it cuts the cross instead of drawing it). Or draw a cross
-  with the pen, cut one with the knife and measure between them.
-
-## Design-side changes
-
-- **Fonts.** One-stroke (Hershey) fonts cut lines, not letters. Vinyl lettering needs outline fonts (installed or
-  uploaded TTF/OTF). In cut mode, the Text tab should prefer outline fonts or warn about one-stroke ones.
-- **Image tracing.**
-  - Outline gives closed shapes, which is right for cutting.
-  - Center line gives open paths: warn.
-  - Edges, Contours, Photo hatch, Squiggle, Spiral and Stipple only make sense for a pen: hide them or warn in cut
-    mode.
-- **Patterns.** These are mostly open lines: warn.
-- **Mirror.** Heat-transfer vinyl is cut from the back, so it needs a mirror option for the cut.
-- **Weed box.** An optional rectangle around the design, plus weeding lines, makes peeling easier.
-- **Small details.** Warn about tiny pieces. The Cut job dialog already warns under 3 mm.
-
-## Preview
-
-- **Knife path.** Play the compensated path, with its swivels, and optionally the blade-tip path.
-- **Reuse.** Once there's cutting G-code, the existing G-code simulator and preview can replay it.
-
-## Later: draw and cut in one job
-
-Print-then-cut stickers need a tool per layer (Pen or Knife) instead of a project-wide mode. Each layer change would
-get a pause to swap tools, and the knife offset would be calibrated against the pen.
-
-## Proposed order
-
-1. Knife-path geometry with unit tests, drawn on the canvas in cut mode.
-2. Cut G-code in `build()`, the simulator's knife mode, and a golden-file test.
-3. Cut order: inside first, no joining.
-4. Calibration files: the depth ladder and the blade-offset test.
-5. The knife-path preview.
-6. Design-side warnings and options: fonts, trace styles, mirror, weed box.
-7. A tool per layer, for print-then-cut.
+- **Image tracing:** Outline gives closed shapes; the other styles are meant for a pen. Hide or warn about them for
+  the cut layer.
+- **Weed box margin:** it's fixed at 3 mm (`layer.weedMargin` is read but has no UI yet).
+- **Passes:** they repeat at the same Z. Thick material may need a step down per pass.
+- **Print-then-cut** works by design (pen layers, then the cut layer, with a swap pause). Registration accuracy
+  depends on the knife offset measurement.
