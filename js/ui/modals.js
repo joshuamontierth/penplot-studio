@@ -277,7 +277,7 @@
         h('li', null, 'Copy the .gcode file to the ', h('b', null, 'root of the SD card'), ' (no folders, simple file name) and put the card back in the printer.'),
         h('li', null, 'Tape the paper down where the canvas shows it. Do ', h('b', null, 'not'), ' attach the pen holder yet.'),
         h('li', null, 'On the printer screen: ', h('b', null, 'Print files → SD card'), ' → pick the file → Print.'),
-        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? (p.purgeChute ? ' While paused the firmware moves the toolhead to the purge chute (back left) and warms the nozzle (about 90 °C) - do not touch it. On Resume it waits 30-60 s, then returns.' : ' The nozzle can warm up while paused - do not touch it.') : null),
+        h('li', null, 'The printer homes (the nozzle touches the plate center), lowers the bed to Z ' + p.zAttach + ' and parks the toolhead' + (p.pauseForAttach ? ', then ' : '.'), p.pauseForAttach ? h('b', null, 'pauses with a Resume button.') : null, x1c && p.pauseForAttach ? (p.purgeChute ? ' While paused the firmware moves the toolhead to the purge chute (back left), and the nozzle is warm' + (p.pauseTemp > 0 ? ' (held at ' + p.pauseTemp + ' °C so Resume does not wait for it to cool)' : ' (about 90 °C)') + ' - do not touch it.' + (p.pauseTemp > 0 ? '' : ' On Resume it waits about a minute, then returns.') : ' The nozzle can warm up while paused - do not touch it.') : null),
         p.pauseForAttach ? h('li', null, 'Clip the pen holder onto the toolhead, check the pen is tight and the tip height is right, then press ', h('b', null, 'Resume'), '.') : null,
         plan.jobs.length > 1 && mode === 'combined' && p.layerPause ? h('li', null, 'Between layers the printer pauses again: swap to the next pen color and press Resume.') : null,
         p.endPause
@@ -539,8 +539,8 @@
         h('li', null, h('b', null, 'Never start a normal 3D print with the module attached'), ' - it can collide when the printer cuts filament.'),
         h('li', null, 'If the printer has Auto-recovery from step loss, consider turning it off: a re-home in the middle of a plot moves the toolhead to its corner with the holder on.'),
         h('li', null, 'Emergency: press Pause or Stop on the printer screen, or switch the printer off. Don\'t move the toolhead by hand with the holder attached.'),
-        h('li', null, 'The nozzle can warm up during pauses (about 90 °C on the X1C). Keep fingers off it while attaching or removing the holder, and make sure the holder does not rest against the hotend - PLA softens around 60 °C.'),
-        h('li', null, 'Heaters stay off and the G-code contains no extrusion.'),
+        h('li', null, 'The nozzle is warm during pauses: about 90 °C on the X1/P1, where the file holds it at ' + (PP.GCode.MAX_PAUSE_TEMP) + ' °C so Resume does not wait about a minute for it to cool. Keep fingers off it while attaching or removing the holder, and make sure the holder does not rest against the hotend - PLA softens around 60 °C.'),
+        h('li', null, 'Heaters are off while the pen draws (the only heat is the pause warm-up, switched off before anything moves), and the G-code contains no extrusion.'),
         h('li', null, 'Every file is replayed in a G-code simulator before download. It checks the module safe zone, pen heights, travel lifts, pauses and the end of the file, and asks before you download a file that fails.'),
         h('li', null, 'The nozzle safe zone (Printer settings → Bed & limits) keeps the module away from the frame and door. The striped area on the canvas is where the pen cannot go.'),
         h('li', null, 'Do a dry run whenever you change offsets, nozzle limits, paper position or Z heights.'),
@@ -548,7 +548,14 @@
         h('li', null, 'Keep the module away from the top glass: if the glass limits the spring travel, remove it or use a riser.')),
       h('h3', null, 'Credits'),
       h('p', { class: 'hint' }, 'The Hershey Fonts were originally created by Dr. A. V. Hershey while working at the U. S. National Bureau of Standards. The format of the font data was originally created by James Hurt, Cognition, Inc. SVG font versions by Windell H. Oskay (Evil Mad Scientist); font packaging from the hersheytext project. Uploaded fonts are parsed with opentype.js.'),
+      buildStamp()
     ];
+  }
+
+  // desktop/prepare.mjs stamps the desktop build with its commit and date; the web version has none
+  function buildStamp() {
+    const m = document.querySelector('meta[name="pp-build"]');
+    return m ? h('p', { class: 'hint' }, 'Build ' + m.content) : null;
   }
 
   function helpShortcuts() {

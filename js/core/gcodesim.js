@@ -11,6 +11,8 @@
  *   - Z pushed too far past the pen contact height (Z-Draw)
  *   - homing with the pen attached, pauses without bed clearance, pausing or
  *     ending with the pen down, heaters switched on, extrusion, coordinate resets
+ *   - the one allowed heater use: the profile's pause warm-up (pauseTemp, at most 90 C), with no move until it
+ *     is switched off again after the pause
  *   - malformed numbers (NaN / undefined), missing feed rates, unknown commands
  * It also rebuilds every pen-down stroke (pen coordinates) and the travel moves,
  * so the preview can animate exactly what the file will do.
@@ -121,6 +123,8 @@
     const penBB = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     const grow = (b, a, c) => { if (a < b.minX) b.minX = a; if (a > b.maxX) b.maxX = a; if (c < b.minY) b.minY = c; if (c > b.maxY) b.maxY = c; };
     let steppersOff = false;
+    let heat = 0, heatLine = 0, heatPaused = false; // hotend target set by the file (pause warm-up only)
+    const pauseHeat = Math.min(Math.max(0, p.pauseTemp || 0), PP.GCode.MAX_PAUSE_TEMP);
     let lastLine = 0;
     const isDrawZ = (zz) => drawZs.some(d => Math.abs(d - zz) < EPS);
 
@@ -141,6 +145,7 @@
       const inspect = mk ? mk[1] === 'inspect' : !removing && /\bmeasure\b/i.test(lastComment) && !attached;
       const action = removing ? 'remove' : inspect ? 'inspect' : (attached ? 'swap' : 'attach');
       pauses.push({ line: ln, x, y, z, kind, action });
+      if (heat > 0) heatPaused = true;
       if (penDown) err(ln, 'pause-pen-down', 'Pause while the pen is down.');
       if (!inspect && (z === null || z < p.zAttach - EPS)) err(ln, 'pause-clearance', 'Pause with the bed at Z ' + (z === null ? '?' : z) + ' - it should be lowered to the attach height (' + p.zAttach + ') so there is room to attach, swap or remove the pen.');
       if (!inspect && x !== null && (x < p.nozzleMinX - EPS || x > p.nozzleMaxX + EPS || y < p.nozzleMinY - EPS || y > p.nozzleMaxY + EPS)) err(ln, 'pause-pos', 'Pause with the toolhead outside the safe zone.');
@@ -214,10 +219,15 @@
         case 'M0': case 'M1': case 'M600':
           doPause(ln, cmd);
           break;
-        case 'M104': case 'M109':
-          if ((P.S || 0) > 0) err(ln, 'heater', 'Hotend heater switched on (' + P.S + ' C) - not needed for pen plotting and risky next to a plastic pen mount.');
-          if (cmd === 'M109') warn(ln, 'wait-heat', 'M109 waits for the hotend temperature.');
+        case 'M104': case 'M109': {
+          const s = P.S || 0;
+          if (s > pauseHeat + EPS) err(ln, 'heater', 'Hotend heater switched on (' + s + ' C) - ' + (pauseHeat > 0 ? 'above the pause warm-up temperature (' + pauseHeat + ' C).' : 'not needed for pen plotting and risky next to a plastic pen mount.'));
+          else if (s <= 0 && heat > 0 && !heatPaused) warn(ln, 'heater-no-pause', 'The hotend heater was switched on (line ' + heatLine + ') without a pause.');
+          if (cmd === 'M109' && !(s > 0 && s <= pauseHeat + EPS)) warn(ln, 'wait-heat', 'M109 waits for the hotend temperature.');
+          if (s > 0) { if (!(heat > 0)) { heatLine = ln; heatPaused = false; } } else heatPaused = false;
+          heat = s;
           break;
+        }
         case 'M140': case 'M190':
           if ((P.S || 0) > 0) err(ln, 'bed-heater', 'Bed heater switched on (' + P.S + ' C).');
           break;
@@ -246,6 +256,7 @@
           const hasXY = ('X' in P) || ('Y' in P);
           const hasZ = 'Z' in P;
           if (!hasXY && !hasZ) break;
+          if (heat > 0) err(ln, 'heater-move', 'Move with the hotend heater on (' + heat + ' C, line ' + heatLine + ') - the pause warm-up must be switched off (M104 S0) right after the pause.');
           if (!homed) {
             // Relative Z-only moves before homing (Bambu safe start) are fine
             if (!abs && !hasXY) break;
@@ -324,6 +335,7 @@
     }
 
     if (penDown) err(lastLine, 'end-pen-down', 'The file ends with the pen down.');
+    if (heat > 0) err(lastLine, 'end-heater', 'The file ends with the hotend heater on (' + heat + ' C).');
     finishStroke();
     if (attached && z !== null && z < zLift - EPS) err(lastLine, 'end-low', 'The file ends with the pen near the paper (Z' + z + ').');
     else if (z !== null && z < p.zEnd - EPS) warn(lastLine, 'end-not-lowered', 'The bed is not lowered to the end height (' + p.zEnd + ') at the end.');

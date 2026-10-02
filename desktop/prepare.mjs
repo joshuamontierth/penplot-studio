@@ -1,7 +1,8 @@
 // Stage the static web app into desktop/app/ so Electron (dev) and electron-builder (dist) both load the same
 // files. Runs before `desktop:start` / `desktop:dist`. Plain Node so it behaves the same on Windows and Linux.
 // desktop/app/ is a build artifact: it is git-ignored, wiped and re-copied on every run.
-import { cp, mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,8 +30,23 @@ for (const name of ENTRIES) {
   await cp(from, path.join(out, name), { recursive: true, filter: (src) => !JUNK.has(path.basename(src)) });
 }
 
+// Stamp the build with its commit and date (shown at the end of Help → Safety), so builds can be told apart.
+const git = (...args) => {
+  try {
+    return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return '';
+  }
+};
+const changed = git('status', '--porcelain', '--', ...ENTRIES) ? ' + local changes' : '';
+const stamp = `${git('rev-parse', '--short', 'HEAD') || 'unknown commit'}${changed}, ${new Date().toISOString().slice(0, 10)}`;
+const html = (await readFile(path.join(out, 'index.html'), 'utf8')).replace(
+  /<head>/i,
+  `<head>\n  <meta name="pp-build" content="${stamp}">`,
+);
+await writeFile(path.join(out, 'index.html'), html);
+
 // Every local src/href in index.html must exist in the bundle.
-const html = await readFile(path.join(out, 'index.html'), 'utf8');
 const missing = [];
 for (const m of html.matchAll(/\b(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
   const ref = (m[1] ?? m[2]).split(/[?#]/)[0];

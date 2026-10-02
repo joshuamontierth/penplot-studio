@@ -81,6 +81,7 @@ project up. Read sections 1–3 before touching printer-related code._
 | A9 | After a plain-gcode job ends, the firmware makes **no extra moves** (no filament cut) | High (session 2 review; first dry run ended cleanly) | Falu's warning is about slicer end G-code | Since 2026-09-30 the X1C default has **no end pause**, so this assumption is now load-bearing: the holder is removed after the job ends |
 | A12 | AI monitoring does not need to be turned off (user, 2026-10-01: plots ran fine with it on). Auto-recovery from step loss may still re-home mid-plot; Help suggests turning it off | Confirmed by the user | First X1C plots | Nothing to do |
 | A13 | **A1 profile** (`bambu-a1`): pen offset X 0, Y −28 (3dplotter.xyz A1 holder), Z 14/20, whole bed as nozzle safe zone (open frame), no G380 preamble, park X128 Y128. Plot area 256 × 228 | Medium (published by 3dplotter.xyz; not measured here) | 3dplotter.xyz A1 page | Empty run, then the Offset finder, on an A1 |
+| A14 | **Resume waits for the nozzle to reach the temperature saved before the pause.** With target 0 (a warm nozzle never gets there) Resume took 72 s; target 90 set without waiting took 5 s; nozzle brought to 90 with `M109` before the pause took 4 s. So X1/P1 profiles have `pauseTemp: 90`: `M109 S90` before each pause, `M104 S0` right after Resume, before any move. The simulator allows heat only that way (≤ 90 °C, no move while on, off by the end) | **Measured on the X1C 2026-10-02** (`experiments/pause-temperature-test.gcode`, nothing attached). P1 assumed the same; A1 untested, so its `pauseTemp` stays 0 | User's stopwatch timings A/B/C | Time a Resume on a P1 and an A1 |
 | A10 | `M73 P<pct> R<min>` shows progress on the X1C screen | High | Used in Bambu files | Visual |
 | A11 | 200 mm/s travel and 4000 mm/s² acceleration don't shake the clipped-on holder loose | Unknown | — | First plot; lower in settings if needed |
 
@@ -555,6 +556,11 @@ Record every answer. They settle the assumptions in §3.
 18. The Draw tab is gone: it repeated the tool strip. The active tool's settings (smoothing, corner radius, sides,
     star points and inner radius, eraser size) are in a small bar at the canvas's top left (`buildToolOptions` in
     `js/app/app.js`). It is hidden for tools without settings. The BACK OF PRINTER label is right-aligned to make room.
+19. Pause warm-up (A14): `pauseTemp` in the profiles, `warmForPause`/`coolAfterPause` in `js/core/gcode.js` around
+    every pause (plots and the offset finder), and the heater rules in `js/core/gcodesim.js`. The default is 0, so
+    saved custom profiles without the field keep the heater off.
+20. Desktop builds carry a stamp (commit and date, shown at the end of Help → Safety), written by `desktop/prepare.mjs`;
+    the smoke test checks it and that the pen-holder dialog opens from Printer settings (11 checks).
 
 ---
 

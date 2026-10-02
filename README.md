@@ -101,14 +101,16 @@ G90 / G21 / M83, heaters off, fans off, M220 S100, M204 S4000
 G91 / M17 Z0.4 / G380 S2 Z30 / G380 S2 Z-25 / G1 Z5 / G90 / M17 ...   ; Bambu's own "drop the bed before homing"
 G28                         ; home - holder NOT attached
 G1 Z60 / G1 X80 Y245        ; bed down, park near the purge chute
+M109 S90                    ; X1/P1: warm the nozzle first, so Resume does not wait ~70 s for it to cool
 M400 U1                     ; PAUSE 1: attach the pen holder, press Resume
+M104 S0                     ; heater off again before anything moves
 G1 Z20                      ; pen up (travel height)
   G1 X.. Y.. F12000         ; travel (nozzle coords = pen - offset)
   G1 Z14 F900               ; pen down (pure Z move)
   M400 P50                  ; dwell
   G1 X.. Y.. F1800 ...      ; draw
   G1 Z20 F900               ; pen up
-  (pen change between layers: bed to Z60, park, M400 U1)
+  (pen change between layers: bed to Z60, park, M109 S90 / M400 U1 / M104 S0)
 G1 Z80                      ; bed down at the end (no end pause by default: remove the holder after it finishes)
 G1 X152 Y250                ; toolhead to the back
 ```

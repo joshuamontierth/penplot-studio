@@ -25,6 +25,9 @@
   const APP = 'PenPlot Studio';
   const VERSION = '1.0.0';
 
+  // Pause warm-up (see pauseTemp in BAMBU_BASE): the X1/P1 presets use PAUSE_TEMP, no profile may exceed MAX
+  const PAUSE_TEMP = 90, MAX_PAUSE_TEMP = 90;
+
   const BAMBU_BASE = {
     firmware: 'bambu',
     bedWidth: 256, bedDepth: 256,
@@ -51,6 +54,10 @@
     heatersOff: true,
     // X1/P1: M400 U1 pauses park the toolhead at the purge chute (confirmed on an X1C); used for the instructions
     purgeChute: true,
+    // Nozzle temperature held through each pause (0 = heater off). The X1/P1 firmware warms the nozzle while paused
+    // and on Resume waits for the temperature saved before the pause: a target of 0, which a warm nozzle never
+    // reaches, cost 72 s per Resume on an X1C; warming to 90 C before the pause brought it to 4 s (HANDOFF A14).
+    pauseTemp: 0,
     // labels: short printer name for the welcome design, and whether the front has a door (canvas orientation label)
     shortName: '',
     door: false,
@@ -63,9 +70,9 @@
   const A1_MOUNT = 'A1 pen holder (3dplotter.xyz: pen about 28 mm in front of the nozzle - confirm with the Offset finder)';
 
   const BUILTIN_PROFILES = [
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', shortName: 'X1C', door: true, builtin: true, mount: FALU_MOUNT }),
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', shortName: 'X1', door: true, builtin: true, mount: FALU_MOUNT }),
-    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', shortName: 'P1S', door: true, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1c', name: 'Bambu Lab X1 Carbon', shortName: 'X1C', door: true, pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-x1e', name: 'Bambu Lab X1 / X1E', shortName: 'X1', door: true, pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
+    Object.assign({}, BAMBU_BASE, { id: 'bambu-p1s', name: 'Bambu Lab P1S / P1P', shortName: 'P1S', door: true, pauseTemp: PAUSE_TEMP, builtin: true, mount: FALU_MOUNT }),
     // A1: open bed-slinger (the bed moves in Y, the toolhead in X and Z). No door or enclosure walls for the holder
     // to hit, so the whole bed is the nozzle's safe zone; the pen sits in front of the nozzle, which leaves a
     // 256 x 228 mm plot area (3dplotter.xyz). No purge chute, and no X1/P1 G380 start preamble.
@@ -88,6 +95,20 @@
 
   const FIELD_DEFAULTS = Object.assign({}, BAMBU_BASE);
 
+  /** Pause warm-up temperature: the profile's, clamped to [0, MAX_PAUSE_TEMP]. */
+  function pauseTemp(p) {
+    return U.clamp(Math.round(p.pauseTemp || 0), 0, MAX_PAUSE_TEMP);
+  }
+  // Around each pause: warm the nozzle first (waits, toolhead parked), and switch the heater off right after
+  // Resume, before anything moves. The simulator rejects any other heater use.
+  function warmForPause(L, p) {
+    const t = pauseTemp(p);
+    if (t > 0) L('M109 S' + t + ' ; warm the nozzle to ' + t + ' C first, so Resume does not wait for it to cool');
+  }
+  function coolAfterPause(L, p) {
+    if (pauseTemp(p) > 0) L('M104 S0 ; heater off again before anything moves');
+  }
+
   function normalizeProfile(p) {
     const out = Object.assign({}, FIELD_DEFAULTS, p || {});
     for (const k in FIELD_DEFAULTS) {
@@ -96,6 +117,7 @@
         out[k] = isFinite(v) ? v : FIELD_DEFAULTS[k];
       }
     }
+    out.pauseTemp = pauseTemp(out);
     return out;
   }
 
@@ -259,6 +281,7 @@
     L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF + ' ; park toolhead');
     L('M400 ; wait for moves to finish');
     if (p.pauseForAttach) {
+      warmForPause(L, p);
       L('; ' + '*'.repeat(58));
       L('; PAUSE: attach the pen holder now, check the pen height,');
       L(';        then press RESUME on the printer screen.');
@@ -266,6 +289,7 @@
       L('; PP_PAUSE attach');
       L(p.pauseCommand || 'M400 U1');
       L('G90 ; re-assert absolute mode after resume');
+      coolAfterPause(L, p);
     }
     L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up (travel height)');
     L('');
@@ -288,10 +312,12 @@
         L('G1 Z' + f(p.zAttach) + ' F' + zF + ' ; lower the bed for pen change');
         L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF + ' ; park toolhead');
         L('M400');
+        warmForPause(L, p);
         L('; PAUSE: ' + c1(j.pauseMessage || ('change to the pen for layer "' + (j.name || ji + 1) + '"')) + ', then press RESUME');
         L('; PP_PAUSE swap');
         L(p.pauseCommand || 'M400 U1');
         L('G90');
+        coolAfterPause(L, p);
         L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
       }
       let prevT = 0;
@@ -326,10 +352,12 @@
     if (p.endPause) {
       L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF + ' ; park toolhead');
       L('M400');
+      warmForPause(L, p);
       L('; PAUSE: remove the pen holder now, then press RESUME to finish');
       L('; PP_PAUSE remove');
       L(p.pauseCommand || 'M400 U1');
       L('G90');
+      coolAfterPause(L, p);
     }
     L('G1 X' + f(p.endX) + ' Y' + f(p.endY) + ' F' + travelF + ' ; move toolhead out of the way');
     L('M400');
@@ -485,10 +513,12 @@
     L('G1 Z' + f(p.zAttach) + ' F' + zF);
     L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF);
     L('M400');
+    warmForPause(L, p);
     L('; PAUSE: attach the pen holder with the pen, then press RESUME');
     L('; PP_PAUSE attach');
     L(pause);
     L('G90');
+    coolAfterPause(L, p);
     L('G1 Z' + f(p.zLift) + ' F' + zF + ' ; pen up');
     const seg = (x0, y0, x1, y1) => {
       L('G1 X' + f(x0) + ' Y' + f(y0) + ' F' + travelF);
@@ -510,10 +540,12 @@
     L('G1 Z' + f(p.zAttach) + ' F' + zF);
     L('G1 X' + f(p.parkX) + ' Y' + f(p.parkY) + ' F' + travelF);
     L('M400');
+    warmForPause(L, p);
     L('; PAUSE: remove the pen holder now (keep the paper in place), then press RESUME');
     L('; PP_PAUSE remove');
     L(pause);
     L('G90');
+    coolAfterPause(L, p);
     // A timed wait, not a pause: the firmware moves the toolhead to the purge chute while paused. Z-Lift is
     // safe even if the holder was left on (the pen tip is then above the paper, as for any travel move).
     L('G1 X' + f(nx) + ' Y' + f(ny) + ' F' + travelF + ' ; bare nozzle over the reference point');
@@ -539,6 +571,7 @@
 
   PP.GCode = {
     APP, VERSION,
+    MAX_PAUSE_TEMP,
     offsetFinder,
     safeDrawZ,
     minSafeDrawZ,

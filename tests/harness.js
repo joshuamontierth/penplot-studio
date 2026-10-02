@@ -346,6 +346,7 @@
       const inZone = () => [rnd(p.nozzleMinX, p.nozzleMaxX), rnd(p.nozzleMinY, p.nozzleMaxY)];
       [p.parkX, p.parkY] = inZone();
       [p.endX, p.endY] = inZone();
+      p.pauseTemp = rng() < 0.5 ? 0 : rnd(0, 120); // clamped to GCode.MAX_PAUSE_TEMP
       if (GC.validateProfile(GC.normalizeProfile(p)).length === 0) return p;
     }
     return clone(X1C);

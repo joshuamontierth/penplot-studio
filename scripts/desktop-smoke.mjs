@@ -57,6 +57,8 @@ try {
 
   check('loads app://penplot/index.html', page.url().startsWith('app://penplot/'), page.url());
   check('window title', (await page.title()) === 'PenPlot Studio', await page.title());
+  const stamp = await page.evaluate(() => globalThis.document.querySelector('meta[name="pp-build"]')?.content || '');
+  check('build is stamped with its commit', /^[0-9a-f]{7,}/.test(stamp), stamp);
 
   const fonts = await page.evaluate(async () => {
     const r = await fetch('app://penplot/vendor/hersheytext/hersheytext.min.json');
@@ -96,6 +98,23 @@ try {
     return v;
   });
   check('3D library for the pen-holder tool loads', Math.abs(mesh - 1) < 1e-9, String(mesh));
+
+  // and the user can reach it: Printer settings → Pen mount → Pen holder for your pen…
+  let holder = '';
+  try {
+    while (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // first-launch help
+    await page.getByRole('button', { name: 'Printer & plotter settings' }).click();
+    await page.getByRole('button', { name: 'Pen holder for your pen…' }).click();
+    const dlg = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Pen holder for your pen' }) });
+    await dlg.locator('.ph-result', { hasText: 'Choose your cartridge' }).waitFor({ timeout: 10000 });
+    holder = await dlg.locator('.ph-result').textContent();
+    while (await page.getByRole('dialog').count()) await page.keyboard.press('Escape');
+  } catch (e) {
+    holder = String(e.message).split('\n')[0];
+  }
+  check('pen-holder tool opens from Printer settings', /Choose your cartridge/.test(holder), holder);
 
   const isolated = await page.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined');
   check('renderer has no Node access', isolated);

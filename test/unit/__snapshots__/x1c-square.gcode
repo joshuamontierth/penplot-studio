@@ -41,6 +41,7 @@ G90
 G1 Z60 F900 ; lower the bed for pen clearance
 G1 X80 Y245 F12000 ; park toolhead
 M400 ; wait for moves to finish
+M109 S90 ; warm the nozzle to 90 C first, so Resume does not wait for it to cool
 ; **********************************************************
 ; PAUSE: attach the pen holder now, check the pen height,
 ;        then press RESUME on the printer screen.
@@ -48,6 +49,7 @@ M400 ; wait for moves to finish
 ; PP_PAUSE attach
 M400 U1
 G90 ; re-assert absolute mode after resume
+M104 S0 ; heater off again before anything moves
 G1 Z20 F900 ; pen up (travel height)
 
 ; ===== Layer 1/1: Layer 1 (#000000) =====
