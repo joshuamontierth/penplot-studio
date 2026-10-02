@@ -105,22 +105,20 @@ try {
   });
   check('3D library for the pen-holder tool loads', Math.abs(mesh - 1) < 1e-9, String(mesh));
 
-  // and the user can reach it: Printer settings → Pen mount → Pen holder for your pen…
+  // and the user can reach it: Printer settings → Pen mount → Download pen mount (the bundled parts load)
   let holder = '';
   try {
     while (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // first-launch help
     await page.getByRole('button', { name: 'Printer & plotter settings' }).click();
-    await page.getByRole('button', { name: 'Pen holder for your pen…' }).click();
-    const dlg = page
-      .getByRole('dialog')
-      .filter({ has: page.getByRole('heading', { name: 'Pen holder for your pen' }) });
-    await dlg.locator('.ph-result', { hasText: 'Choose your cartridge' }).waitFor({ timeout: 10000 });
+    await page.getByRole('button', { name: 'Download pen mount' }).click();
+    const dlg = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Download pen mount' }) });
+    await dlg.locator('.ph-result', { hasText: 'Supports pens up to' }).waitFor({ timeout: 30000 });
     holder = await dlg.locator('.ph-result').textContent();
     while (await page.getByRole('dialog').count()) await page.keyboard.press('Escape');
   } catch (e) {
     holder = String(e.message).split('\n')[0];
   }
-  check('pen-holder tool opens from Printer settings', /Choose your cartridge/.test(holder), holder);
+  check('pen mount dialog opens and loads the bundled parts', /Supports pens up to/.test(holder), holder);
 
   // saving goes through the desktop bridge (one dialog, not one per file); PP_TEST_SAVE_DIR skips the dialog
   const saved = await page.evaluate(() =>

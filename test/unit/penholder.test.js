@@ -1,6 +1,6 @@
-// Pen-holder bore resizer (js/core/penholder.js) on synthetic parts built with manifold itself, plus the
-// owner's real holder STLs when they are present locally (experiments/stls is git-ignored, so CI skips that).
-import { existsSync, readFileSync } from 'node:fs';
+// Pen-holder bore resizer (js/core/penholder.js) on synthetic parts built with manifold itself, plus the bundled
+// pen mount parts in assets/penmount/.
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -124,23 +124,28 @@ describe('bore resizer', () => {
   });
 });
 
-// The owner's real holder parts, when present on this machine (git-ignored: never in CI)
-const REAL = join(ROOT, 'experiments/stls');
-const realParts = [
-  ['Pen Cartriage.stl', 'z', 10.56],
-  ['Spring.stl', 'y', 11.47],
-].filter(([f]) => existsSync(join(REAL, f)));
+// The bundled pen mount parts (assets/penmount/)
+const MOUNT = join(ROOT, 'assets/penmount');
 
-describe.skipIf(!realParts.length)('real holder STLs (local only)', () => {
-  it.each(realParts)('%s: finds the bore and resizes it for an 8 mm pen', (file, axis, d) => {
-    const part = PH.analyze(api, STL.parse(readFileSync(join(REAL, file)).buffer.slice(0)).tris);
+describe('bundled pen mount parts', () => {
+  it.each([
+    ['pen-cartridge.stl', 'z', 10.56, 12.1],
+    ['spring.stl', 'y', 11.47, 12.7],
+  ])('%s: finds the bore and its limit, and resizes it for an 8 mm pen', (file, axis, d, maxD) => {
+    const tris = () => STL.parse(readFileSync(join(MOUNT, file)).buffer.slice(0)).tris;
+    const part = PH.analyze(api, tris());
     expect(part.axis).toBe(axis);
     expect(part.d).toBeCloseTo(d, 1);
-    const target = 8.4 + (axis === 'y' ? 0.9 : 0);
-    const out = PH.resize(api, part, target);
+    expect(part.maxD).toBeCloseTo(maxD, 1);
+    const out = PH.resize(api, part, 8.4 + (axis === 'y' ? 0.9 : 0));
     const m = PH.toManifold(api, out.tris);
-    expect(m.genus()).toBe(PH.toManifold(api, STL.parse(readFileSync(join(REAL, file)).buffer.slice(0)).tris).genus());
+    expect(m.genus()).toBe(PH.toManifold(api, tris()).genus());
     m.delete();
     PH.free(part);
+  });
+
+  it('ships both printer attachments', () => {
+    for (const f of ['attachment-x1p1.stl', 'attachment-a1.stl'])
+      expect(STL.parse(readFileSync(join(MOUNT, f)).buffer.slice(0)).count).toBeGreaterThan(1000);
   });
 });

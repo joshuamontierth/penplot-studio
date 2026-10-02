@@ -135,10 +135,10 @@ kbd { font: 10px var(--mono); padding: 1px 4px; border: 1px solid var(--border-2
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .field > label { font-size: 12px; color: var(--text-2); display: flex; justify-content: space-between; }
 .field > label .unit { color: var(--muted); font-size: 11px; }
-.field input:not([type=checkbox]):not([type=range]):not([type=color]), .field select, textarea, .name-input, .layer-rename {
+.field input:not([type=checkbox]):not([type=range]):not([type=color]), .field select, .ph-part select, textarea, .name-input, .layer-rename {
   width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border-2); border-radius: 5px; padding: 5px 8px; min-width: 0;
 }
-.field input:focus, .field select:focus, textarea:focus, .name-input:focus, .layer-rename:focus { outline: none; border-color: var(--accent); }
+.field input:focus, .field select:focus, .ph-part select:focus, textarea:focus, .name-input:focus, .layer-rename:focus { outline: none; border-color: var(--accent); }
 .field select option, .field select optgroup { background: var(--bg); color: var(--text); }
 .slider-row { display: flex; align-items: center; gap: 8px; }
 .slider-row input[type=range] { flex: 1; min-width: 0; }
@@ -149,6 +149,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; m
 .num::-webkit-inner-spin-button { opacity: .4; }
 .sub { padding-left: 10px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 9px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px 10px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
 .row { display: flex; align-items: center; }
 .row.gap { gap: 8px; }
 .row.gap-lg { gap: 16px; align-items: flex-start; }
@@ -411,7 +413,10 @@ textarea.code { font: 12px/1.5 var(--mono); background: var(--bg); color: var(--
 
 /* ---------- pen holder dialog ---------- */
 .ph { display: flex; flex-direction: column; gap: 12px; }
-.ph-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
-.ph-slot { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
-.ph-result { font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 2px; }
-.ph-canvas { width: 100%; height: auto; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+.ph-parts { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.ph-part { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 40px; }
+.ph-part + .ph-part { border-top: 1px solid var(--border); }
+.ph-part label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.ph-part select { width: auto; }
+.ph-result { font-size: 13px; color: var(--text-2); }
+.ph-canvas { width: 100%; max-width: 640px; align-self: center; height: auto; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }

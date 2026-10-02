@@ -61,7 +61,7 @@
     // labels: short printer name for the welcome design, and whether the front has a door (canvas orientation label)
     shortName: '',
     door: false,
-    // which printer attachment STL the pen-holder tool saves with the resized parts ('' = ask for a generic one)
+    // which bundled pen mount attachment fits ('x1p1' or 'a1'; '' = offer X1/P1 first)
     holder: '',
     startGcode: '',
     endGcode: '',

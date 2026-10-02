@@ -41,30 +41,26 @@
 
     const tabsDef = [
       ['Pen mount', () => [
-        h('div', { class: 'row gap' }, h('p', { class: 'hint grow' }, draft.mount || ''),
-          UI.btn('Pen holder for your pen…', () => UI.openPenHolder(), { small: true, title: 'Resize the pen tube of your holder STLs for a measured pen' })),
         h('div', { class: 'row gap-lg' },
-          h('div', { class: 'grow' },
-            F('penOffsetX', 'Pen offset X (right +, left -)', 'mm', { step: 0.1, decimals: 2, title: 'How far the pen tip is to the RIGHT of the nozzle (negative = left). Falu mount: about -28' }),
-            F('penOffsetY', 'Pen offset Y (back +, front -)', 'mm', { step: 0.1, decimals: 2, title: 'How far the pen tip is BEHIND the nozzle (negative = in front). Falu mount: about -35' }),
-            h('p', { class: 'hint' }, 'Nozzle position = pen position - offset. Not sure? Run Calibrate → Offset finder: it draws a cross, then parks the bare nozzle over the same spot so you can measure the offset with a ruler.'),
-            h('p', { class: 'hint' }, 'The nozzle limits (Bed & limits tab) are the safe zone for the attached module. The X1C defaults follow the mount designer\'s excluded area: keep the nozzle out of the front 55 mm and the left 48 mm.')),
-          offsetDiagram)]],
+          h('div', { class: 'grow stack' },
+            F('penOffsetX', 'Pen offset X (right +, left -)', 'mm', { step: 0.1, decimals: 2 }),
+            F('penOffsetY', 'Pen offset Y (back +, front -)', 'mm', { step: 0.1, decimals: 2 })),
+          offsetDiagram),
+        h('div', { class: 'row' }, UI.btn('Download pen mount', () => UI.openPenHolder(), { icon: 'download' }))]],
       ['Z heights', () => [
         h('div', { class: 'grid2' },
-          F('zDraw', 'Z-Draw (pen down)', 'mm', { step: 0.1, decimals: 2, min: 0.2, title: 'Nozzle height where the pen tip presses on the paper. Lower value = more pressure.' }),
+          F('zDraw', 'Z-Draw (pen down)', 'mm', { step: 0.1, decimals: 2, min: 0.2 }),
           F('zLift', 'Z-Lift (pen up / travel)', 'mm', { step: 0.1, decimals: 2, min: 0.5 }),
-          F('zAttach', 'Attach / pen-change height', 'mm', { step: 1, min: 1, title: 'The bed drops to this height while you attach or swap the pen holder.' }),
-          F('zEnd', 'End height', 'mm', { step: 1, min: 1, title: 'Bed height after the plot finishes.' }),
-          F('zMax', 'Maximum Z', 'mm', { step: 1, min: 10 })),
-        h('p', { class: 'hint' }, 'On the X1C, Z is the distance between nozzle and plate - a larger Z moves the bed further down, away from the pen. Where the pen touches depends on how far it sticks out of the holder: the Instructables guide uses Z 14, the mount designer uses about Z 17 for a Stabilo. Run the calibration test to find yours. Pen-down heights are always kept between Z-Draw - 4 and Z-Lift - 0.5.')]],
+          F('zAttach', 'Attach / pen-change height', 'mm', { step: 1, min: 1 }),
+          F('zEnd', 'End height', 'mm', { step: 1, min: 1 }),
+          F('zMax', 'Maximum Z', 'mm', { step: 1, min: 10 }))]],
       ['Speeds', () => [
         h('div', { class: 'grid2' },
           F('drawSpeed', 'Draw speed', 'mm/s', { min: 1, max: 500 }),
           F('travelSpeed', 'Move (travel) speed', 'mm/s', { min: 5, max: 600 }),
           F('zSpeed', 'Z speed', 'mm/s', { min: 1, max: 30, step: 0.5, decimals: 1 }),
-          F('accel', 'Acceleration', 'mm/s²', { min: 0, max: 20000, step: 100, title: 'Sent as M204. Lower values give cleaner lines. 0 = do not change.' }),
-          F('penDownDelay', 'Pen-down dwell', 'ms', { min: 0, max: 2000, step: 10, title: 'Pause after lowering the pen so ink starts flowing (M400 P on Bambu, G4 P on Marlin).' }),
+          F('accel', 'Acceleration', 'mm/s²', { min: 0, max: 20000, step: 100 }),
+          F('penDownDelay', 'Pen-down dwell', 'ms', { min: 0, max: 2000, step: 10 }),
           F('penUpDelay', 'Pen-up dwell', 'ms', { min: 0, max: 2000, step: 10 }))]],
       ['Bed & limits', () => [
         h('div', { class: 'grid2' },
@@ -74,15 +70,14 @@
           F('nozzleMaxX', 'Nozzle X max', 'mm', { step: 0.5 }),
           F('nozzleMinY', 'Nozzle Y min', 'mm', { step: 0.5 }),
           F('nozzleMaxY', 'Nozzle Y max', 'mm', { step: 0.5 }),
-          F('margin', 'Safety margin', 'mm', { min: 0, max: 30, step: 0.5, decimals: 1 })),
-        h('p', { class: 'hint' }, 'Nozzle limits = where the nozzle may go while the pen holder is attached (the module\'s safe zone). The drawable area is this zone shifted by the pen offset and cut to the plate - everything else is red on the canvas.')]],
+          F('margin', 'Safety margin', 'mm', { min: 0, max: 30, step: 0.5, decimals: 1 }))]],
       ['Start / pause / end', () => [
         CB('home', 'Home all axes (G28) at the start'),
-        CB('safeStart', 'Drop the bed a little before homing (Bambu safe start, from Bambu\'s own start G-code)'),
-        CB('pauseForAttach', 'Pause after homing so I can attach the pen holder', 'Recommended for the X1C: the pen holder must not be attached while the printer homes.'),
+        CB('safeStart', 'Drop the bed a little before homing'),
+        CB('pauseForAttach', 'Pause after homing so I can attach the pen holder'),
         CB('layerPause', 'Pause between layers for pen changes'),
-        CB('endPause', 'Pause at the end so I can remove the pen holder', 'Recommended by the mount designer: never let the job finish with the module attached.'),
-        CB('heatersOff', 'Make sure heaters are off (M104 S0 / M140 S0)'),
+        CB('endPause', 'Pause at the end so I can remove the pen holder'),
+        CB('heatersOff', 'Heaters off at the start'),
         CB('progress', 'Report progress on the printer screen (M73)'),
         h('div', { class: 'field' }, h('label', null, 'Pause command'), (() => {
           const i = h('input', { value: draft.pauseCommand, spellcheck: 'false' });
@@ -91,11 +86,10 @@
           return i;
         })()),
         h('div', { class: 'grid2' },
-          F('parkX', 'Park X (nozzle)', 'mm', { step: 1, title: 'Where the toolhead waits while you attach/swap the pen.' }),
+          F('parkX', 'Park X (nozzle)', 'mm', { step: 1 }),
           F('parkY', 'Park Y (nozzle)', 'mm', { step: 1 }),
           F('endX', 'End X (nozzle)', 'mm', { step: 1 }),
-          F('endY', 'End Y (nozzle)', 'mm', { step: 1 })),
-        h('p', { class: 'hint' }, 'Bambu printers pause with M400 U1 and show a Resume button on the screen. Marlin printers usually use M0 or M600.')]],
+          F('endY', 'End Y (nozzle)', 'mm', { step: 1 }))]],
       ['Custom G-code', () => [
         TXT('startGcode', 'Extra start G-code (inserted before homing)', '; e.g. M1002 gcode_claim_action : 0'),
         TXT('endGcode', 'Extra end G-code (inserted at the end)', '; e.g. M18'),
@@ -106,10 +100,9 @@
           UI.checkField({ label: 'Optimize drawing order (minimize pen travel)', value: pf.reorder, onChange: (v) => App.setPrefs({ reorder: v }) }),
           UI.checkField({ label: 'Allow drawing paths in reverse', value: pf.reverse, onChange: (v) => App.setPrefs({ reverse: v }) }),
           h('div', { class: 'grid2' },
-            UI.numberField({ label: 'Join tolerance', unit: 'mm', value: pf.joinTol, min: 0, max: 2, step: 0.01, decimals: 2, title: 'Paths whose ends are closer than this are drawn without lifting the pen.', onChange: (v) => App.setPrefs({ joinTol: v }) }),
-            UI.numberField({ label: 'Simplify tolerance', unit: 'mm', value: pf.simplify, min: 0, max: 1, step: 0.01, decimals: 3, title: 'Removes points that deviate less than this from a straight line - smaller files, same look.', onChange: (v) => App.setPrefs({ simplify: v }) }),
+            UI.numberField({ label: 'Join tolerance', unit: 'mm', value: pf.joinTol, min: 0, max: 2, step: 0.01, decimals: 2, onChange: (v) => App.setPrefs({ joinTol: v }) }),
+            UI.numberField({ label: 'Simplify tolerance', unit: 'mm', value: pf.simplify, min: 0, max: 1, step: 0.01, decimals: 3, onChange: (v) => App.setPrefs({ simplify: v }) }),
             UI.numberField({ label: 'Drop paths shorter than', unit: 'mm', value: pf.minLength, min: 0, max: 5, step: 0.05, decimals: 2, onChange: (v) => App.setPrefs({ minLength: v }) })),
-          h('p', { class: 'hint' }, 'These settings apply to every profile and take effect immediately.'),
         ];
       }],
     ];
@@ -460,7 +453,7 @@
     const p = PP.App.profile();
     return [
       h('p', { class: 'lead' }, 'PenPlot Studio turns your Bambu Lab X1 Carbon into a pen plotter. Design here, download G-code and plot from the SD card - no firmware changes.'),
-      step(1, 'Install the pen mount', 'Print the Falu "Head Mount V1 - Series X & P" and fit a pen (Stabilo Point 88, Pilot G2, Micron...). Do not clip the module onto the printer yet - that happens at the first pause. Thicker or thinner pen? ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); while (UI.closeTopModal()); UI.openPenHolder(); } }, 'Resize the holder for it'), ' (also in Printer settings → Pen mount).'),
+      step(1, 'Install the pen mount', h('a', { href: '#', onclick: (e) => { e.preventDefault(); while (UI.closeTopModal()); UI.openPenHolder(); } }, 'Download the pen mount'), ' sized for your pen (also in Printer settings → Pen mount), print it and fit the pen. Do not clip the module onto the printer yet - that happens at the first pause.'),
       step(2, 'Calibrate once', 'Before your first real plot, work through the ', h('b', null, 'Calibration'), ' tab: an empty run, a dry-run frame test and the offset finder. It takes about 15 minutes and confirms the pen offset for your mount.'),
       step(3, 'Design', 'Use the Text, Draw, Image, Patterns and Import tabs. Each layer is one pen: layers plot top to bottom with a pause to swap pens.'),
       step(4, 'Preview', 'Preview replays the actual G-code: pen strokes, travel moves and the safety check.'),

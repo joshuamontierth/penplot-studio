@@ -551,7 +551,8 @@ Record every answer. They settle the assumptions in §3.
       - spring rings 11.47 mm in 8 rings, max 12.7.
     - With the default fit (0.4) and the designed spring margin (+1.31 over the pen), pens up to about 11.3 mm
       work. The target is a Pilot G2 without its rubber grip.
-    - The STLs stay out of git (`experiments/stls/`), because of the designer's license.
+    - The parts are bundled in `assets/penmount/` (owner's decision 2026-10-02: personal use, private repo). Check
+      the MakerWorld license before the repo or its builds are shared.
 16. Electron desktop app in `desktop/`: `npm run desktop:dist` and `.github/workflows/desktop.yml`.
 18. The Draw tab is gone: it repeated the tool strip. The active tool's settings (smoothing, corner radius, sides,
     star points and inner radius, eraser size) are in a small bar at the canvas's top left (`buildToolOptions` in
@@ -568,6 +569,10 @@ Record every answer. They settle the assumptions in §3.
     still downloads normally. The pen-holder tool now saves the cartridge, the spring and the printer's attachment
     STL unchanged (profile `holder`: `x1p1` or `a1`, remembered per family). Smoke test: 12 checks, including a
     real save through the bridge (`PP_TEST_SAVE_DIR`).
+22. Pen mount download (Printer settings → Pen mount → **Download pen mount**, also linked from Help step 1): the
+    bundled cartridge and spring are resized for the pen, and the X1/P1 or A1 attachment is saved unchanged; tick
+    which parts to save. No file picking. Printer settings lost every description paragraph and tooltip, by the
+    owner's request (the tabs stay).
 
 ---
 

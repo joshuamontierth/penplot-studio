@@ -15,3 +15,5 @@
 *.otf  binary
 *.woff binary
 *.woff2 binary
+*.stl  binary
+*.wasm binary

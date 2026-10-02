@@ -13,7 +13,7 @@ const out = path.join(here, 'app');
 // Everything the page loads at runtime. README.md carries the credits and licence notes (vendor/ has its own
 // licence files). If index.html starts referencing another top-level file or folder, add it here; the check at the
 // bottom fails the build if something it references did not make it into the bundle.
-const ENTRIES = ['index.html', 'css', 'js', 'vendor', 'README.md'];
+const ENTRIES = ['index.html', 'css', 'js', 'vendor', 'assets', 'README.md'];
 
 const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'Desktop.ini']);
 
