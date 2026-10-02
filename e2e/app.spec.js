@@ -17,7 +17,7 @@ test('boots with the header, tools, panels, canvas and welcome design', async ({
   await expect(tools).toHaveCount(12);
   await expect(page.locator('#toolstrip .tool-btn.on')).toHaveAttribute('data-tool', 'select');
 
-  await expect(page.locator('#left-panel .tab')).toHaveText(['Text', 'Draw', 'Image', 'Patterns', 'Import']);
+  await expect(page.locator('#left-panel .tab')).toHaveText(['Text', 'Image', 'Patterns', 'Import']);
   await expect(page.locator('#left-panel .tab.on')).toHaveText('Text');
   const rightSections = page.locator('#right-panel .sec-head');
   for (const name of ['Layers', 'Selection']) {
@@ -108,6 +108,20 @@ test('keyboard shortcuts pick tools; zoom keys and buttons change the zoom', asy
   }
   await page.keyboard.press('Escape'); // Escape returns to the select tool
   await expect(active).toHaveAttribute('data-tool', 'select');
+
+  // the canvas bar shows the active tool's settings only, and edits them
+  const opts = page.getByRole('toolbar', { name: 'Tool settings' });
+  await expect(opts).toBeHidden();
+  await page.keyboard.press('s');
+  await expect(opts).toContainText('Star');
+  await expect(opts.locator('.field label')).toHaveText(['Points', 'Inner radius×']);
+  const points = opts.locator('.field', { hasText: 'Points' }).locator('input');
+  await points.fill('7');
+  await points.press('Enter');
+  expect(await page.evaluate(() => PP.App.drawSettings.starPoints)).toBe(7);
+  await page.keyboard.press('l'); // the line tool has no settings
+  await expect(opts).toBeHidden();
+  await page.keyboard.press('Escape');
 
   const zoom = page.locator('#canvas-wrap .zoom-lbl');
   await expect(zoom).toHaveText('100%');

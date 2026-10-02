@@ -552,6 +552,9 @@ Record every answer. They settle the assumptions in §3.
       work. The target is a Pilot G2 without its rubber grip.
     - The STLs stay out of git (`experiments/stls/`), because of the designer's license.
 16. Electron desktop app in `desktop/`: `npm run desktop:dist` and `.github/workflows/desktop.yml`.
+18. The Draw tab is gone: it repeated the tool strip. The active tool's settings (smoothing, corner radius, sides,
+    star points and inner radius, eraser size) are in a small bar at the canvas's top left (`buildToolOptions` in
+    `js/app/app.js`). It is hidden for tools without settings. The BACK OF PRINTER label is right-aligned to make room.
 
 ---
 

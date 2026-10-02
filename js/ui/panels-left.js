@@ -1,4 +1,4 @@
-/* PenPlot Studio - left panel: Text, Draw, Image, Patterns, Import tabs. */
+/* PenPlot Studio - left panel: Text, Image, Patterns, Import tabs (drawing tools are in the tool strip). */
 (function (PP) {
   'use strict';
 
@@ -20,7 +20,7 @@
   // Tabs
   // ---------------------------------------------------------------------------
   const tabs = {};
-  let tabBar, tabBody, currentTab = null;
+  let tabBar, tabBody;
 
   function addTab(id, label, iconName, build) {
     const btn = h('button', { class: 'tab', dataset: { tab: id }, onclick: () => showTab(id) }, UI.icon(iconName, 16), h('span', null, label));
@@ -38,7 +38,6 @@
       tabs[k].btn.classList.toggle('on', k === id);
       tabs[k].pane.classList.toggle('on', k === id);
     }
-    currentTab = id;
     PP.Storage.setLocal('leftTab', id);
     if (t.onShow) t.onShow();
   }
@@ -228,40 +227,6 @@
   UI.uploadFont = uploadFont;
 
   // ---------------------------------------------------------------------------
-  // DRAW
-  // ---------------------------------------------------------------------------
-  function buildDraw(pane) {
-    const ds = PP.App.drawSettings;
-    const grid = h('div', { class: 'tool-grid' });
-    const btns = [];
-    for (const t of PP.App.TOOLS) {
-      if (t.sep) continue;
-      const b = h('button', { class: 'tool-card', dataset: { tool: t.id }, title: t.label + ' (' + t.key + ')', onclick: () => PP.App.setTool(t.id) }, UI.icon(t.icon, 20), h('span', null, t.label.split(' (')[0]), h('kbd', null, t.key));
-      btns.push(b);
-      grid.appendChild(b);
-    }
-    PP.App.events.on('tool', (id) => btns.forEach(b => b.classList.toggle('on', b.dataset.tool === id)));
-    const setDS = (k) => (v) => { ds[k] = v; PP.App.saveDrawSettings(); PP.App.view.invalidate(); };
-    pane.append(
-      UI.section('Drawing tools', [grid]),
-      UI.section('Tool settings', [
-        UI.numberField({ label: 'Freehand smoothing', value: ds.smoothing, min: 0, max: 4, step: 1, slider: true, onChange: setDS('smoothing'), onInput: setDS('smoothing') }),
-        UI.numberField({ label: 'Polygon sides', value: ds.sides, min: 3, max: 24, step: 1, slider: true, onChange: setDS('sides'), onInput: setDS('sides') }),
-        UI.numberField({ label: 'Star points', value: ds.starPoints, min: 3, max: 24, step: 1, slider: true, onChange: setDS('starPoints'), onInput: setDS('starPoints') }),
-        UI.numberField({ label: 'Star inner radius', unit: '×', value: ds.starInner, min: 0.1, max: 0.9, step: 0.01, slider: true, decimals: 2, onChange: setDS('starInner'), onInput: setDS('starInner') }),
-        UI.numberField({ label: 'Rectangle corner radius', unit: 'mm', value: ds.cornerRadius, min: 0, max: 50, step: 0.5, slider: true, decimals: 1, onChange: setDS('cornerRadius'), onInput: setDS('cornerRadius') }),
-        UI.numberField({ label: 'Eraser size', unit: 'mm', value: ds.eraserSize, min: 0.5, max: 40, step: 0.5, slider: true, decimals: 1, onChange: setDS('eraserSize'), onInput: setDS('eraserSize') }),
-      ]),
-      UI.section('Tips', [h('ul', { class: 'tips' },
-        h('li', null, 'Everything you draw becomes a pen path on the active layer (see Layers on the right).'),
-        h('li', null, 'Shapes can be filled with hatch lines in the Selection panel.'),
-        h('li', null, 'The red striped zone cannot be reached by the pen because of the mount offset.'),
-        h('li', null, 'Hold Space and drag, or use the middle mouse button, to pan. Scroll to zoom.'),
-      )]),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
   // IMAGE
   // ---------------------------------------------------------------------------
   function buildImage(pane) {
@@ -282,8 +247,7 @@
     // the trace dialog remembers the style chosen there too: show it when coming back
     grid.addEventListener('pointerenter', () => { mode = PP.Storage.getLocal('trace', {}).mode || mode; paint(); });
     pane.append(UI.section('Image', [drop,
-      h('div', { class: 'field' }, h('label', null, 'Trace style'), grid),
-      h('p', { class: 'hint' }, 'Outline and Center line suit line art; the rest suit photos.')]));
+      h('div', { class: 'field' }, h('label', null, 'Trace style'), grid)]));
   }
 
   // ---------------------------------------------------------------------------
@@ -531,7 +495,6 @@
     tabBody = h('div', { class: 'tab-body' });
     host.append(tabBar, tabBody);
     addTab('text', 'Text', 'text', buildText);
-    addTab('draw', 'Draw', 'pen', buildDraw);
     addTab('image', 'Image', 'image', buildImage);
     addTab('patterns', 'Patterns', 'star', buildPatterns);
     addTab('import', 'Import', 'upload', buildImport);
@@ -539,8 +502,5 @@
     showTab('text');
     const last = PP.Storage.getLocal('leftTab', 'text');
     if (tabs[last]) showTab(last);
-    PP.App.events.on('tool', (id) => {
-      if (['pen', 'line', 'polyline', 'curve', 'rect', 'ellipse', 'polygon', 'star', 'eraser'].includes(id) && currentTab !== 'draw' && currentTab !== 'text') showTab('draw');
-    });
   };
 })(window.PP = window.PP || {});

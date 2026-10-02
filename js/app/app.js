@@ -515,6 +515,30 @@
     App.view.fit = function () { origFit(); App.view._fitZoom = App.view.zoom; zoomLbl.textContent = '100%'; };
   }
 
+  // Settings of the active tool, in a small bar on the canvas (the tools themselves are in the tool strip).
+  // Tools without settings hide it; how to use a tool is in the status bar.
+  function buildToolOptions() {
+    const UI = PP.UI, ds = App.drawSettings;
+    const set = (k) => (v) => { ds[k] = v; App.saveDrawSettings(); App.view.invalidate(); };
+    const F = (k, label, o) => UI.numberField(Object.assign({ label, value: ds[k], onChange: set(k), onInput: set(k) }, o));
+    const OPTS = {
+      pen: () => [F('smoothing', 'Smoothing', { min: 0, max: 4 })],
+      rect: () => [F('cornerRadius', 'Corner radius', { unit: 'mm', min: 0, max: 50, step: 0.5, decimals: 1 })],
+      polygon: () => [F('sides', 'Sides', { min: 3, max: 24 })],
+      star: () => [F('starPoints', 'Points', { min: 3, max: 24 }), F('starInner', 'Inner radius', { unit: '×', min: 0.1, max: 0.9, step: 0.05, decimals: 2 })],
+      eraser: () => [F('eraserSize', 'Size', { unit: 'mm', min: 0.5, max: 40, step: 0.5, decimals: 1 })],
+    };
+    const bar = h('div', { class: 'tool-opts', role: 'toolbar', 'aria-label': 'Tool settings' });
+    bar.hidden = true;
+    U.$('#canvas-wrap').appendChild(bar);
+    events.on('tool', (id) => {
+      U.clear(bar);
+      const t = TOOLS.find(x => x.id === id);
+      bar.hidden = !OPTS[id];
+      if (OPTS[id]) bar.append(h('span', { class: 'tool-opts-name' }, PP.UI.icon(t.icon, 15), t.label), ...OPTS[id]());
+    });
+  }
+
   function buildStatusBar() {
     const bar = U.$('#statusbar');
     const pos = h('span', { class: 'st-pos' }, 'X —  Y —');
@@ -663,6 +687,7 @@
     App.view = new PP.View(U.$('#canvas-wrap'));
     PP.installTools(App.view);
     buildCanvasControls();
+    buildToolOptions();
     buildStatusBar();
     PP.Preview.init(App.view);
     PP.UI.buildLeftPanel(U.$('#left-panel'));

@@ -175,11 +175,6 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; m
 .font-item { display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 2px 4px 2px 8px; background: var(--panel-2); border-radius: 5px; margin-top: 4px; }
 
 /* draw tab */
-.tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.tool-card { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; border: 1px solid var(--border-2); background: var(--bg); cursor: pointer; color: var(--text-2); font-size: 12.5px; text-align: left; }
-.tool-card span { flex: 1; }
-.tool-card:hover { border-color: var(--border-2); color: var(--text); }
-.tool-card.on { border-color: var(--accent); color: var(--accent-2); background: var(--accent-soft); }
 
 .dropzone { width: 100%; border: 1px dashed var(--border-2); border-radius: var(--radius); padding: 18px 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--bg); color: var(--text-2); cursor: pointer; text-align: center; font: inherit; transition: border-color .15s, background .15s; }
 .dropzone b { color: var(--text); font-size: 13px; }
@@ -203,6 +198,12 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; m
 #canvas-wrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--canvas); }
 .bed-canvas { display: block; outline: none; touch-action: none; }
 .canvas-ctrls { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 0; background: var(--bg); border: 1px solid var(--border-2); border-radius: 5px; padding: 1px; }
+.tool-opts { position: absolute; left: 12px; top: 12px; display: flex; align-items: center; gap: 14px; background: var(--bg); border: 1px solid var(--border-2); border-radius: 5px; padding: 4px 10px; box-shadow: var(--shadow); max-width: calc(100% - 24px); flex-wrap: wrap; }
+.tool-opts[hidden], .previewing .tool-opts { display: none; }
+.tool-opts-name { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
+.tool-opts .field { flex-direction: row; align-items: center; gap: 6px; }
+.tool-opts .field > label { gap: 3px; white-space: nowrap; }
+.tool-opts .field .num { width: 64px; padding-top: 3px; padding-bottom: 3px; }
 .zoom-lbl { font-size: 11px; color: var(--muted); min-width: 42px; text-align: center; }
 .previewing .canvas-ctrls { bottom: 70px; }
 .preview-bar { position: absolute; left: 50%; bottom: 14px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border-2); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); transition: opacity .15s, transform .15s; width: min(780px, calc(100% - 24px)); }
