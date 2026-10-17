@@ -1,8 +1,9 @@
-// Pen-holder bore resizer (js/core/penholder.js) on synthetic parts built with manifold itself, plus the bundled
-// pen mount parts in assets/penmount/.
-import { readFileSync } from 'node:fs';
+// Pen-holder bore resizer (js/core/penholder.js) on synthetic parts built with manifold itself, the owner's local
+// copies of the MakerWorld parts when present, and the ZIP reader that takes the MakerWorld download.
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { deflateRawSync } from 'node:zlib';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ROOT } from './load.js';
 
@@ -124,15 +125,17 @@ describe('bore resizer', () => {
   });
 });
 
-// The bundled pen mount parts (assets/penmount/)
-const MOUNT = join(ROOT, 'assets/penmount');
+// The owner's copies of the MakerWorld parts, when present on this machine (experiments/stls is git-ignored: the
+// license does not allow committing them, so CI skips this)
+const REAL = join(ROOT, 'experiments/stls');
+const realParts = [
+  ['Pen Cartriage.stl', 'z', 10.56, 12.1],
+  ['Spring.stl', 'y', 11.47, 12.7],
+].filter(([f]) => existsSync(join(REAL, f)));
 
-describe('bundled pen mount parts', () => {
-  it.each([
-    ['pen-cartridge.stl', 'z', 10.56, 12.1],
-    ['spring.stl', 'y', 11.47, 12.7],
-  ])('%s: finds the bore and its limit, and resizes it for an 8 mm pen', (file, axis, d, maxD) => {
-    const tris = () => STL.parse(readFileSync(join(MOUNT, file)).buffer.slice(0)).tris;
+describe.skipIf(!realParts.length)('the MakerWorld parts (local only)', () => {
+  it.each(realParts)('%s: finds the bore and its limit, and resizes it for an 8 mm pen', (file, axis, d, maxD) => {
+    const tris = () => STL.parse(readFileSync(join(REAL, file)).buffer.slice(0)).tris;
     const part = PH.analyze(api, tris());
     expect(part.axis).toBe(axis);
     expect(part.d).toBeCloseTo(d, 1);
@@ -143,9 +146,56 @@ describe('bundled pen mount parts', () => {
     m.delete();
     PH.free(part);
   });
+});
 
-  it('ships both printer attachments', () => {
-    for (const f of ['attachment-x1p1.stl', 'attachment-a1.stl'])
-      expect(STL.parse(readFileSync(join(MOUNT, f)).buffer.slice(0)).count).toBeGreaterThan(1000);
+describe('ZIP files (the MakerWorld download)', () => {
+  /** A ZIP with one stored and one deflated entry, and a folder. */
+  function zip(entries) {
+    const locals = [],
+      centrals = [];
+    let offset = 0;
+    for (const { name, data, deflate } of entries) {
+      const body = deflate ? deflateRawSync(data) : data;
+      const n = Buffer.from(name);
+      const lh = Buffer.alloc(30);
+      lh.writeUInt32LE(0x04034b50, 0);
+      lh.writeUInt16LE(deflate ? 8 : 0, 8);
+      lh.writeUInt32LE(body.length, 18);
+      lh.writeUInt32LE(data.length, 22);
+      lh.writeUInt16LE(n.length, 26);
+      const ch = Buffer.alloc(46);
+      ch.writeUInt32LE(0x02014b50, 0);
+      ch.writeUInt16LE(deflate ? 8 : 0, 10);
+      ch.writeUInt32LE(body.length, 20);
+      ch.writeUInt32LE(data.length, 24);
+      ch.writeUInt16LE(n.length, 28);
+      ch.writeUInt32LE(offset, 42);
+      locals.push(lh, n, body);
+      centrals.push(ch, n);
+      offset += 30 + n.length + body.length;
+    }
+    const cd = Buffer.concat(centrals);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(entries.length, 8);
+    end.writeUInt16LE(entries.length, 10);
+    end.writeUInt32LE(cd.length, 12);
+    end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...locals, cd, end]);
+  }
+
+  it('reads stored and deflated entries and skips folders', async () => {
+    const a = Buffer.from(STL.write(trisOf(tube()))),
+      b = Buffer.from('solid x\nendsolid x\n');
+    const z = zip([
+      { name: 'model/', data: Buffer.alloc(0) },
+      { name: 'model/Pen Cartriage.stl', data: a, deflate: true },
+      { name: 'model/notes.txt', data: b },
+    ]);
+    const files = await window.PP.U.unzip(z.buffer.slice(z.byteOffset, z.byteOffset + z.length));
+    expect(files.map((f) => f.name)).toEqual(['model/Pen Cartriage.stl', 'model/notes.txt']);
+    expect(Buffer.from(files[0].data).equals(a)).toBe(true);
+    expect(Buffer.from(files[1].data).equals(b)).toBe(true);
+    await expect(window.PP.U.unzip(new Uint8Array(40).buffer)).rejects.toThrow(/Not a ZIP/);
   });
 });

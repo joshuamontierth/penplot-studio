@@ -551,8 +551,9 @@ Record every answer. They settle the assumptions in §3.
       - spring rings 11.47 mm in 8 rings, max 12.7.
     - With the default fit (0.4) and the designed spring margin (+1.31 over the pen), pens up to about 11.3 mm
       work. The target is a Pilot G2 without its rubber grip.
-    - The parts are bundled in `assets/penmount/` (owner's decision 2026-10-02: personal use, private repo). Check
-      the MakerWorld license before the repo or its builds are shared.
+    - The parts are NOT in the repository: their MakerWorld license forbids redistribution, and they were removed
+      from the whole git history on 2026-10-17 before publishing. Users download them from MakerWorld and add
+      them once (see item 24); local copies for the tests live in the git-ignored `experiments/stls/`.
 16. Electron desktop app in `desktop/`: `npm run desktop:dist` and `.github/workflows/desktop.yml`.
 18. The Draw tab is gone: it repeated the tool strip. The active tool's settings (smoothing, corner radius, sides,
     star points and inner radius, eraser size) are in a small bar at the canvas's top left (`buildToolOptions` in
@@ -570,13 +571,18 @@ Record every answer. They settle the assumptions in §3.
     STL unchanged (profile `holder`: `x1p1` or `a1`, remembered per family). Smoke test: 12 checks, including a
     real save through the bridge (`PP_TEST_SAVE_DIR`).
 22. Pen mount download (Printer settings → Pen mount → **Download pen mount**, also linked from Help step 1): the
-    bundled cartridge and spring are resized for the pen, and the X1/P1 or A1 attachment is saved unchanged; tick
-    which parts to save. No file picking. Printer settings lost every description paragraph and tooltip, by the
-    owner's request (the tabs stay).
+    cartridge and spring are resized for the pen, and the X1/P1 or A1 attachment is saved unchanged; tick which
+    parts to save. Printer settings lost every description paragraph and tooltip, by the owner's request (the tabs
+    stay).
 23. Project files are `.penplot`: the project JSON, gzipped (`U.gzip` / `U.gunzipText`; opening sniffs the gzip
     magic, so plain `.penplot.json` / `.json` still open). The desktop app registers `.penplot` (electron-builder
     `fileAssociations`; the NSIS installer does it on Windows). A file on the command line, or in a second
     instance's command line, is handed to the page (`pp:take-open-file`, `pp:open-file`).
+24. The pen mount parts are added by the user, not shipped (MakerWorld license; history rewritten 2026-10-17 to drop
+    the STLs, backup bundle in the owner's home folder). The Download pen mount dialog links to MakerWorld 2029113.
+    **Add files…** takes STLs or the downloaded ZIP (`U.unzip`), matches each file to a part by name, and refuses a
+    cartridge or spring without a pen bore. Parts are kept in IndexedDB (`mount:<part>`, with
+    `navigator.storage.persist()`). `*.stl` and `*.3mf` are git-ignored.
 
 ---
 

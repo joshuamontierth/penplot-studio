@@ -160,6 +160,31 @@
       return new TextDecoder().decode(gz ? await pipeBytes(bytes, new DecompressionStream('gzip')) : bytes);
     },
 
+    /** Files in a ZIP archive: [{ name, data: Uint8Array }] (stored or deflated entries; folders skipped). */
+    async unzip(buffer) {
+      const b = new Uint8Array(buffer), v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+      let e = b.length - 22;
+      while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--; // end of central directory
+      if (e < 0) throw new Error('Not a ZIP file.');
+      const count = v.getUint16(e + 10, true);
+      let p = v.getUint32(e + 16, true);
+      const out = [];
+      for (let i = 0; i < count; i++) {
+        if (v.getUint32(p, true) !== 0x02014b50) throw new Error('Damaged ZIP file.');
+        const method = v.getUint16(p + 10, true), size = v.getUint32(p + 20, true);
+        const nameLen = v.getUint16(p + 28, true), extra = v.getUint16(p + 30, true), comment = v.getUint16(p + 32, true);
+        const local = v.getUint32(p + 42, true);
+        const name = new TextDecoder().decode(b.subarray(p + 46, p + 46 + nameLen));
+        p += 46 + nameLen + extra + comment;
+        if (name.endsWith('/')) continue;
+        const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+        const raw = b.subarray(start, start + size);
+        if (method === 0) out.push({ name, data: raw.slice() });
+        else if (method === 8) out.push({ name, data: await pipeBytes(raw, new DecompressionStream('deflate-raw')) });
+      }
+      return out;
+    },
+
     /** " to <folder>" when the desktop app reported where saveFiles put the files, else "". */
     savedTo(r) {
       return r && r.where ? ' to ' + r.where : '';
@@ -177,16 +202,20 @@
     },
 
     /** Open a native file picker and resolve with the chosen File (or null). */
-    pickFile(accept) {
+    /** One file (or null); with opts.multiple, an array of files (empty if none). */
+    pickFile(accept, opts = {}) {
       return new Promise((resolve) => {
         const input = document.createElement('input');
         input.type = 'file';
         if (accept) input.accept = accept;
+        if (opts.multiple) input.multiple = true;
         input.style.display = 'none';
         document.body.appendChild(input);
         input.addEventListener('change', () => {
-          const f = input.files && input.files[0];
+          const all = Array.from(input.files || []);
           input.remove();
+          if (opts.multiple) { resolve(all); return; }
+          const f = all[0];
           resolve(f || null);
         });
         input.addEventListener('cancel', () => { input.remove(); resolve(null); });

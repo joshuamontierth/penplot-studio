@@ -35,3 +35,7 @@ desktop/dist/
 experiments/3mf-samples/
 experiments/stls/
 experiments/pen-holder/
+
+# 3D models from other designers (license): the app asks for them, never ship them
+*.stl
+*.3mf

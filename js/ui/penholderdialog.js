@@ -1,7 +1,10 @@
 /*
  * PenPlot Studio - "Download pen mount" dialog: the mount's pen cartridge and spring with their pen bore resized for
  * a measured pen (js/core/penholder.js), and the printer's attachment unchanged, saved together.
- * The parts are bundled in assets/penmount/ (see its README).
+ *
+ * The parts are the mount designer's files (Falu's "Modular System for A1, P1 & X1 Series" on MakerWorld). Its
+ * license does not allow shipping them with the app, so the user downloads them from MakerWorld once and adds them
+ * here (STLs, or the ZIP MakerWorld gives). They are kept in the app's storage (IndexedDB) from then on.
  */
 (function (PP) {
   'use strict';
@@ -9,53 +12,65 @@
   const U = PP.U, h = U.h;
   const UI = PP.UI;
   const PH = PP.PenHolder;
-  const DIR = 'assets/penmount/';
+  const SOURCE = 'https://makerworld.com/en/models/2029113-modular-system-for-a1-p1-x1-series';
   // the pen passes through the bore of these two, so they are resized
   const RESIZED = [
-    { id: 'cartridge', label: 'Pen cartridge', file: 'pen-cartridge.stl' },
-    { id: 'spring', label: 'Spring', file: 'spring.stl' },
+    { id: 'cartridge', label: 'Pen cartridge', match: /cartri/i },
+    { id: 'spring', label: 'Spring', match: /spring/i },
   ];
-  // the attachment the cartridge clips into, per printer family (profile.holder)
+  // the attachment the cartridge clips into, per printer family (profile.holder); saved unchanged
   const ATTACHMENTS = {
-    x1p1: { label: 'X1 / P1', file: 'attachment-x1p1.stl', save: 'X1-P1 attachment.stl' },
-    a1: { label: 'A1', file: 'attachment-a1.stl', save: 'A1 attachment.stl' },
+    x1p1: { label: 'X1 / P1', save: 'X1-P1 attachment.stl', match: /(x1|p1).*attach|attach.*(x1|p1)/i },
+    a1: { label: 'A1', save: 'A1 attachment.stl', match: /\ba1\b.*attach|attach.*\ba1\b/i },
   };
-  const fetchPart = (file) => fetch(DIR + file).then((r) => {
-    if (!r.ok) throw new Error('Could not load ' + file + ' (HTTP ' + r.status + ')');
-    return r.arrayBuffer();
-  });
+  const KEY = (id) => 'mount:' + id;
+
+  /** Which part a file is, from its name (null = not recognized). */
+  function roleOf(name) {
+    const base = name.split(/[\\/]/).pop();
+    for (const k of ['x1p1', 'a1']) if (ATTACHMENTS[k].match.test(base)) return k;
+    for (const r of RESIZED) if (r.match.test(base)) return r.id;
+    return null;
+  }
 
   UI.openPenHolder = async function () {
     const st = Object.assign({ pen: 8, fit: 0.4, springGap: null }, PP.Storage.getLocal('penholder', {}));
-    // STLs the user picked before the parts were bundled: no longer used
-    for (const k of ['cartridge', 'spring', 'holder:x1p1', 'holder:a1', 'holder:other']) PP.Storage.del('penholder:' + k).catch(() => {});
     const profHolder = PP.App.profile().holder;
     let kind = ATTACHMENTS[profHolder] ? profHolder : 'x1p1';
-    const parts = {}; // id -> analyzed part
+    const files = {}; // id -> { name, buffer } as stored
+    const parts = {}; // cartridge / spring -> analyzed part
     const want = { cartridge: true, spring: true, attachment: true };
-    let api = null, outs = {}, closed = false, ready = false;
+    let api = null, outs = {}, closed = false;
 
     const status = h('div', { class: 'warns' });
-    const result = h('div', { class: 'ph-result' }, 'Loading the pen mount…');
+    const result = h('div', { class: 'ph-result' }, 'Loading…');
     const canvas = h('canvas', { class: 'ph-canvas', width: 560, height: 220 });
     const dlBtn = UI.btn('Download', () => download(), { primary: true, icon: 'download' });
     dlBtn.disabled = true;
 
-    // one row per part: include it or not, and what the download will contain
+    // one row per part: include it or not, what the download will contain, and a button to (re)place its file
     const details = {};
     const row = (id, label, extra) => {
       const cb = h('input', { type: 'checkbox', checked: want[id] });
       cb.addEventListener('change', () => { want[id] = cb.checked; });
       details[id] = h('span', { class: 'hint' }, '');
-      return h('div', { class: 'ph-part' }, h('label', null, cb, h('b', null, label)), extra || null, h('span', { class: 'hspacer' }), details[id]);
+      const choose = UI.btn('Choose…', async () => {
+        const f = await U.pickFile('.stl,model/stl');
+        if (f) await addFile(id === 'attachment' ? kind : id, f.name, await f.arrayBuffer(), true);
+      }, { small: true, title: 'Use a different STL for this part' });
+      return h('div', { class: 'ph-part' }, h('label', null, cb, h('b', null, label)), extra || null, h('span', { class: 'hspacer' }), details[id], choose);
     };
     const attSel = h('select', { 'aria-label': 'Attachment for' }, Object.entries(ATTACHMENTS).map(([k, a]) => h('option', { value: k }, a.label)));
     attSel.value = kind;
-    attSel.addEventListener('change', () => { kind = attSel.value; });
+    attSel.addEventListener('change', () => { kind = attSel.value; showDetails(); regen(); });
     const list = h('div', { class: 'ph-parts' },
       RESIZED.map(r => row(r.id, r.label)),
       row('attachment', 'Attachment', attSel));
-    details.attachment.textContent = 'unchanged';
+
+    const source = h('div', { class: 'ph-source' },
+      h('span', { class: 'hint grow' }, 'Parts from Falu\'s Modular System for A1, P1 & X1. Download the STLs from MakerWorld, then add them once.'),
+      h('a', { class: 'btn btn-sm', href: SOURCE, target: '_blank', rel: 'noopener' }, UI.icon('external', 16), h('span', null, 'MakerWorld')),
+      UI.btn('Add files…', () => addPicked(), { small: true, icon: 'upload', title: 'The STL files, or the ZIP from MakerWorld' }));
 
     const save = () => PP.Storage.setLocal('penholder', { pen: st.pen, fit: st.fit, springGap: st.springGap });
     const penF = UI.numberField({ label: 'Pen diameter', unit: 'mm', value: st.pen, min: 2, max: 30, step: 0.05, decimals: 2, title: 'Measure the widest part that goes through the holder with calipers.', onChange: (v) => { st.pen = v; save(); regen(); } });
@@ -69,6 +84,62 @@
     const springGap = () => (st.springGap != null ? st.springGap : designGap());
     const target = (id) => (id === 'cartridge' ? st.pen + st.fit : st.pen + springGap());
 
+    /**
+     * Take one part's file: cartridge and spring must have a pen bore the resizer finds (so a mixed-up file is
+     * refused); `remember` keeps it in storage for next time.
+     */
+    async function addFile(id, name, buffer, remember) {
+      try {
+        if (id === 'cartridge' || id === 'spring') {
+          api = api || await PH.load();
+          const p = PH.analyze(api, PP.STL.parse(buffer).tris);
+          PH.free(parts[id]);
+          parts[id] = p;
+        } else if (!PP.STL.parse(buffer).count) throw new Error('no triangles in this file');
+        files[id] = { name, buffer };
+        if (remember) {
+          await PP.Storage.set(KEY(id), { name, buffer });
+          if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+        }
+        return true;
+      } catch (e) {
+        UI.toast(name + ': ' + e.message, 'error', 6000);
+        return false;
+      } finally {
+        if (remember) { showDetails(); regen(); }
+      }
+    }
+
+    /** "Add files…": several STLs and/or a ZIP; each file goes to the part its name says. */
+    async function addPicked() {
+      const picked = await U.pickFile('.stl,.zip,model/stl,application/zip', { multiple: true });
+      if (!picked || !picked.length) return;
+      const items = [];
+      for (const f of picked) {
+        const buf = await f.arrayBuffer();
+        if (/\.zip$/i.test(f.name)) {
+          try {
+            for (const z of await U.unzip(buf)) if (/\.stl$/i.test(z.name)) items.push({ name: z.name.split('/').pop(), buffer: z.data.buffer.slice(z.data.byteOffset, z.data.byteOffset + z.data.byteLength) });
+          } catch (e) { UI.toast(f.name + ': ' + e.message, 'error'); }
+        } else items.push({ name: f.name, buffer: buf });
+      }
+      const unknown = [];
+      let added = 0;
+      for (const it of items) {
+        const id = roleOf(it.name);
+        if (!id) { unknown.push(it.name); continue; }
+        if (await addFile(id, it.name, it.buffer, true)) added++;
+      }
+      if (added) UI.toast('Added ' + added + ' part' + (added === 1 ? '' : 's') + '. They are kept for next time.', 'info');
+      if (unknown.length) UI.toast('Not recognized: ' + unknown.join(', ') + '. Use Choose… on its part.', 'warn', 7000);
+      if (!items.length) UI.toast('No STL files found.', 'warn');
+    }
+
+    function showDetails() {
+      for (const r of RESIZED) if (!files[r.id]) details[r.id].textContent = 'not added';
+      details.attachment.textContent = files[kind] ? 'unchanged' : 'not added';
+    }
+
     /** Largest pen both parts allow with the current fit and clearance. */
     function maxPen() {
       let m = Infinity, by = '';
@@ -80,8 +151,14 @@
     }
 
     const regen = U.debounce(() => {
-      if (!ready) return;
+      if (closed) return;
       U.clear(status); U.clear(result); outs = {};
+      const ready = RESIZED.every(r => parts[r.id]);
+      if (!ready) {
+        result.textContent = 'Add the pen cartridge and spring to size them for your pen.';
+        dlBtn.disabled = !files[kind];
+        drawPreview(); return;
+      }
       const lim = maxPen();
       result.append('Supports pens up to ', h('b', null, lim.pen.toFixed(1) + ' mm'), ' (limited by the ' + lim.by + ').');
       if (st.pen > lim.pen + 1e-9) {
@@ -129,20 +206,21 @@
 
     async function download() {
       const pen = U.fmt(st.pen, 2);
-      const files = RESIZED.filter(r => want[r.id] && outs[r.id]).map(r => ({
+      const out = RESIZED.filter(r => want[r.id] && outs[r.id]).map(r => ({
         name: r.label + ' - ' + pen + ' mm pen.stl',
         data: PP.STL.write(outs[r.id].tris, 'PenPlot Studio pen mount, ' + pen + ' mm pen'),
         type: 'model/stl',
       }));
+      if (want.attachment && files[kind]) out.push({ name: ATTACHMENTS[kind].save, data: files[kind].buffer, type: 'model/stl' });
+      if (!out.length) { UI.toast('Tick at least one part that has been added.', 'warn'); return; }
       try {
-        if (want.attachment) files.push({ name: ATTACHMENTS[kind].save, data: await fetchPart(ATTACHMENTS[kind].file), type: 'model/stl' });
-        if (!files.length) { UI.toast('Tick at least one part.', 'warn'); return; }
-        const r = await U.saveFiles(files, { title: files.length > 1 ? 'Choose a folder for the pen mount parts' : undefined });
+        const r = await U.saveFiles(out, { title: out.length > 1 ? 'Choose a folder for the pen mount parts' : undefined });
         if (r) UI.toast('Saved ' + r.count + ' STL file' + (r.count === 1 ? '' : 's') + U.savedTo(r) + '.', 'info', 5000);
       } catch (e) { UI.toast('Could not save the STLs: ' + e.message, 'error'); }
     }
 
     const body = h('div', { class: 'ph' },
+      source,
       h('div', { class: 'grid3' }, penF, fitF, gapF),
       list, result, status, canvas);
     UI.modal({
@@ -151,16 +229,17 @@
       footer: [h('span', { class: 'hspacer' }), dlBtn],
     });
 
-    try {
-      api = await PH.load();
-      const bufs = await Promise.all(RESIZED.map(r => fetchPart(r.file)));
-      RESIZED.forEach((r, i) => { parts[r.id] = PH.analyze(api, PP.STL.parse(bufs[i]).tris); });
-      if (closed) { for (const r of RESIZED) PH.free(parts[r.id]); return; }
-      ready = true;
-      regen();
-    } catch (e) {
-      U.clear(result);
-      status.appendChild(h('div', { class: 'warn-item error' }, UI.icon('warn', 14), h('span', null, e.message)));
+    // the parts added before
+    for (const id of ['cartridge', 'spring', 'x1p1', 'a1']) {
+      try {
+        const saved = await PP.Storage.get(KEY(id));
+        if (saved && saved.buffer && !closed) await addFile(id, saved.name, saved.buffer, false);
+      } catch (e) { /* nothing kept */ }
     }
+    if (closed) { for (const r of RESIZED) PH.free(parts[r.id]); return; }
+    showDetails();
+    regen();
   };
+
+  UI.penMountSource = SOURCE;
 })(window.PP = window.PP || {});

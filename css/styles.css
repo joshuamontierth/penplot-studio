@@ -413,6 +413,7 @@ textarea.code { font: 12px/1.5 var(--mono); background: var(--bg); color: var(--
 
 /* ---------- pen holder dialog ---------- */
 .ph { display: flex; flex-direction: column; gap: 12px; }
+.ph-source { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ph-parts { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .ph-part { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 40px; }
 .ph-part + .ph-part { border-top: 1px solid var(--border); }
